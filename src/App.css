@@ -24,7 +24,8 @@ body {
     align-items: center;
     justify-content: flex-start;
     position: relative;
-    background: rgba(0, 0, 0, 0.8);
+    --notch-bg: rgba(0, 0, 0, 0.8);
+    background: var(--notch-bg);
     backdrop-filter: blur(20px);
     border-radius: 0 0 18px 18px;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -51,7 +52,7 @@ body {
 }
 
 .bloom.expanded {
-    background: rgba(0, 0, 0, 0.92);
+    --notch-bg: rgba(0, 0, 0, 0.92);
 }
 
 .main-row {
@@ -167,10 +168,11 @@ body {
     top: 0;
     width: 13px;
     height: 13px;
-    background: rgba(0, 0, 0, 0.8);
+    background-color: var(--notch-bg);
     pointer-events: none;
     opacity: 0;
     animation: corner-fade-in 0.2s forwards;
+    transition: background-color 0.3s ease;
 }
 
 @keyframes corner-fade-in {
@@ -181,28 +183,26 @@ body {
 
 .bloom.is-impacted::before {
     left: -13px;
-    -webkit-clip-path: path('M 13 13 L 13 0 L 0 0 C 7 0, 13 6, 13 13 Z');
-    clip-path: path('M 13 13 L 13 0 L 0 0 C 7 0, 13 6, 13 13 Z');
-    background:
+    -webkit-mask-image: radial-gradient(circle at 0% 100%, transparent 12.5px, black 13px);
+    mask-image: radial-gradient(circle at 0% 100%, transparent 12.5px, black 13px);
+    background-image:
         radial-gradient(circle at 0 13px,
             transparent 12px,
             rgba(255, 255, 255, 0.1) 12.7px,
             rgba(255, 255, 255, 0.1) 13.3px,
-            transparent 14px),
-        rgba(0, 0, 0, 0.8);
+            transparent 14px);
 }
 
 .bloom.is-impacted::after {
     right: -13px;
-    -webkit-clip-path: path('M 0 13 L 0 0 L 13 0 C 6 0, 0 6, 0 13 Z');
-    clip-path: path('M 0 13 L 0 0 L 13 0 C 6 0, 0 6, 0 13 Z');
-    background:
+    -webkit-mask-image: radial-gradient(circle at 100% 100%, transparent 12.5px, black 13px);
+    mask-image: radial-gradient(circle at 100% 100%, transparent 12.5px, black 13px);
+    background-image:
         radial-gradient(circle at 13px 13px,
             transparent 12px,
             rgba(255, 255, 255, 0.1) 12.7px,
             rgba(255, 255, 255, 0.1) 13.3px,
-            transparent 14px),
-        rgba(0, 0, 0, 0.8);
+            transparent 14px);
 }
 
 .time-flip-container {
@@ -689,7 +689,7 @@ body {
     align-items: flex-start;
     flex: 1;
     min-width: 0;
-    gap: 8px;
+    gap: 9px;
     text-align: left;
 }
 
@@ -707,7 +707,7 @@ body {
     align-items: flex-start;
     min-width: 0;
     flex: 1;
-    gap: 0;
+    gap: 1px;
 }
 
 .header-visualizer {
@@ -716,20 +716,20 @@ body {
 }
 
 .premium-title {
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 600;
     color: white;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    letter-spacing: -0.1px;
+    letter-spacing: -0.15px;
     width: 100%;
 }
 
 .premium-artist {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 400;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.55);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -749,7 +749,9 @@ body {
 .controls-row-sleek {
     display: flex;
     align-items: center;
-    gap: 22px;
+    justify-content: center;
+    width: 100%;
+    gap: 32px;
 }
 
 .sleek-btn {
@@ -766,8 +768,13 @@ body {
 }
 
 .play-pause-btn-floating {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .volume-slider-container {
@@ -782,12 +789,18 @@ body {
 .slider-track-premium {
     position: relative;
     flex: 1;
-    height: 6px;
+    height: 5px;
     background: rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
+    border-radius: 2.5px;
     display: flex;
     align-items: center;
     overflow: hidden;
+    transition: background 0.2s ease, height 0.2s ease;
+}
+
+.slider-track-premium:hover {
+    background: rgba(255, 255, 255, 0.2);
+    height: 6px;
 }
 
 .slider-progress-fill {

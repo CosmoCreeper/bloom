@@ -111,14 +111,6 @@ fn main() {
                 match e {
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         u_main();
-                        // Re-sync appbar if it's already registered, to handle monitor changes
-                        if MAIN_APPBAR_REGISTERED.load(Ordering::Relaxed) {
-                            let w = win_for_events.clone();
-                            tauri::async_runtime::spawn(async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                register_appbar(w);
-                            });
-                        }
                         sync_overlays(&handle_for_events);
                     }
                     tauri::WindowEvent::ScaleFactorChanged { .. } => {
@@ -141,13 +133,6 @@ fn main() {
                 match e {
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         u_dock();
-                        if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
-                            let w = dock_for_events.clone();
-                            tauri::async_runtime::spawn(async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                register_dock_appbar(w);
-                            });
-                        }
                         sync_overlays(&handle_for_dock_events);
                     }
                     tauri::WindowEvent::ScaleFactorChanged { .. } => {

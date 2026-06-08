@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Sender};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::core::BOOL;
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindowVisible, GetWindowLongW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, GetClassNameW};
@@ -500,9 +500,18 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
         let mut last_emit = Instant::now();
         let mut is_known_shell = false;
         let my_process_id = std::process::id();
+        let mut last_monitor_update = Instant::now() - Duration::from_secs(5);
+        let mut cached_scale = 1.0f64;
         
         loop {
             unsafe {
+                let now = Instant::now();
+                if now.duration_since(last_monitor_update) > Duration::from_millis(1000) {
+                    if let Some(m) = handle_visibility.primary_monitor().ok().flatten() {
+                        cached_scale = m.scale_factor();
+                        last_monitor_update = now;
+                    }
+                }
                 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, GetMonitorInfoA, MONITORINFO, MONITOR_DEFAULTTONEAREST};
                 let mut hwnd = GetForegroundWindow();
                 
@@ -607,7 +616,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                         should_overlap = false;
                                         if let Ok(dock_rect_lock) = DOCK_RECT.lock() {
                                             if let Some(dr) = *dock_rect_lock {
-                                                let scale = if let Some(m) = handle_visibility.primary_monitor().ok().flatten() { m.scale_factor() } else { 1.0 };
+                                                let scale = cached_scale;
                                                 let d_left = (dr.x as f64 * scale) as i32;
                                                 let d_right = d_left + (dr.width as f64 * scale) as i32;
                                                 let res_h = (56.0 * scale) as i32;
@@ -622,7 +631,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
 
                                         if let Ok(notch_rect_lock) = NOTCH_RECT.lock() {
                                             if let Some(nr) = *notch_rect_lock {
-                                                let scale = if let Some(m) = handle_visibility.primary_monitor().ok().flatten() { m.scale_factor() } else { 1.0 };
+                                                let scale = cached_scale;
                                                 let n_left = (nr.x as f64 * scale) as i32;
                                                 let n_right = n_left + (nr.width as f64 * scale) as i32;
                                                 let res_h = (36.0 * scale) as i32;
@@ -736,12 +745,22 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
         let mut last_top_edge_hover = None;
         let mut dock_interaction_expiry = Instant::now() - Duration::from_secs(1);
         let mut topbar_interaction_expiry = Instant::now() - Duration::from_secs(1);
+        let mut last_monitor_update = Instant::now() - Duration::from_secs(5);
+        let mut cached_monitor_pos = PhysicalPosition::<i32>::default();
+        let mut cached_monitor_size = PhysicalSize::<u32>::default();
         
         loop {
             let now = Instant::now();
             let mut pt = POINT::default();
             unsafe {
                 if GetCursorPos(&mut pt).is_ok() {
+                    if now.duration_since(last_monitor_update) > Duration::from_millis(1000) {
+                        if let Ok(Some(monitor)) = app_handle.primary_monitor() {
+                            cached_monitor_pos = *monitor.position();
+                            cached_monitor_size = *monitor.size();
+                            last_monitor_update = now;
+                        }
+                    }
                     // --- Dock Interaction ---
                     if let Some(dock_win) = app_handle.get_webview_window("dock") {
                         if dock_win.is_visible().unwrap_or(false) {
@@ -789,16 +808,12 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
 
                             // 3. Hot-edge detection (Bottom edge)
                             let in_dock_hover = DOCK_IS_HOVERED.load(Ordering::Relaxed);
-                            if let Ok(Some(monitor)) = dock_win.primary_monitor() {
-                                let m_pos = monitor.position();
-                                let m_size = monitor.size();
-                                let at_bottom_edge = pt.y >= (m_pos.y + m_size.height as i32 - 2) && 
-                                                     pt.x >= m_pos.x && pt.x <= (m_pos.x + m_size.width as i32);
-                                
-                                if at_bottom_edge || in_dock_hover {
-                                    is_hovered = true;
-                                    dock_interaction_expiry = now + Duration::from_millis(500);
-                                }
+                            let at_bottom_edge = pt.y >= (cached_monitor_pos.y + cached_monitor_size.height as i32 - 2) && 
+                                                 pt.x >= cached_monitor_pos.x && pt.x <= (cached_monitor_pos.x + cached_monitor_size.width as i32);
+                            
+                            if at_bottom_edge || in_dock_hover {
+                                is_hovered = true;
+                                dock_interaction_expiry = now + Duration::from_millis(500);
                             }
 
                             let final_dock_hover = is_hovered || now < dock_interaction_expiry;
@@ -821,16 +836,12 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                             // 3. Hot-edge detection (Top edge)
                             let in_notch_hover = NOTCH_IS_HOVERED.load(Ordering::Relaxed);
                             let mut is_notch_hovered = false;
-                            if let Ok(Some(monitor)) = main_win.primary_monitor() {
-                                let m_pos = monitor.position();
-                                let m_size = monitor.size();
-                                let at_top_edge = pt.y <= (m_pos.y + 2) && 
-                                                  pt.x >= m_pos.x && pt.x <= (m_pos.x + m_size.width as i32);
-                                
-                                if at_top_edge || in_notch_hover {
-                                    is_notch_hovered = true;
-                                    topbar_interaction_expiry = now + Duration::from_millis(500);
-                                }
+                            let at_top_edge = pt.y <= (cached_monitor_pos.y + 2) && 
+                                              pt.x >= cached_monitor_pos.x && pt.x <= (cached_monitor_pos.x + cached_monitor_size.width as i32);
+                            
+                            if at_top_edge || in_notch_hover {
+                                is_notch_hovered = true;
+                                topbar_interaction_expiry = now + Duration::from_millis(500);
                             }
 
                             let mut is_click_interactive = false;
@@ -1047,7 +1058,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         let pr = (40.0 * scale) as i32;  // But only reserve 40px of screen space
         
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
+            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, GetWindowRect, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
             use windows::Win32::Foundation::RECT;
             use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_NEW, ABM_QUERYPOS, ABM_SETPOS, ABE_TOP};
             
@@ -1078,7 +1089,24 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
             
             // Use the shell-approved rect for the final position, but keep our ph height for the window
             let final_width = abd.rc.right - abd.rc.left;
-            let _ = SetWindowPos(hwnd, None, abd.rc.left, abd.rc.top, final_width, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            
+            let mut current_rect = RECT::default();
+            let mut already_positioned = false;
+            if GetWindowRect(hwnd, &mut current_rect).is_ok() {
+                let current_width = current_rect.right - current_rect.left;
+                let current_height = current_rect.bottom - current_rect.top;
+                if current_rect.left == abd.rc.left 
+                    && current_rect.top == abd.rc.top 
+                    && current_width == final_width 
+                    && current_height == ph 
+                {
+                    already_positioned = true;
+                }
+            }
+            
+            if !already_positioned {
+                let _ = SetWindowPos(hwnd, None, abd.rc.left, abd.rc.top, final_width, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
             
             if !window.is_visible().unwrap_or(false) {
                 let _ = window.show();
@@ -1101,7 +1129,7 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
         let pr = (56.0 * scale) as i32;
         
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
+            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, GetWindowRect, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
             use windows::Win32::Foundation::RECT;
             use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_NEW, ABM_QUERYPOS, ABM_SETPOS, ABE_BOTTOM};
             
@@ -1137,7 +1165,24 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
             // ignoring what ABM_SETPOS might have tried to "correct" (like stacking on invisible taskbar)
             let final_y = m_pos.y + m_size.height as i32 - ph;
             let final_width = abd.rc.right - abd.rc.left;
-            let _ = SetWindowPos(hwnd, None, abd.rc.left, final_y, final_width, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            
+            let mut current_rect = RECT::default();
+            let mut already_positioned = false;
+            if GetWindowRect(hwnd, &mut current_rect).is_ok() {
+                let current_width = current_rect.right - current_rect.left;
+                let current_height = current_rect.bottom - current_rect.top;
+                if current_rect.left == abd.rc.left 
+                    && current_rect.top == final_y 
+                    && current_width == final_width 
+                    && current_height == ph 
+                {
+                    already_positioned = true;
+                }
+            }
+            
+            if !already_positioned {
+                let _ = SetWindowPos(hwnd, None, abd.rc.left, final_y, final_width, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
             
             if !window.is_visible().unwrap_or(false) {
                 let _ = window.show();

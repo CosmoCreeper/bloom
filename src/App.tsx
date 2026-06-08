@@ -288,6 +288,8 @@ function App() {
   }, [isExpanded, isHidden, windowLabel]);
 
   useEffect(() => {
+    if (!windowLabel) return;
+
     // Only animate the main top-bar
     if (windowLabel !== 'main') {
       setIsReady(true);
@@ -881,7 +883,7 @@ function App() {
   // Calculate width dynamically based on enabled features
   const getDynamicWidth = () => {
     if (isCalendarMode) return 480;
-    if (isMusicMode && isHovered) return 330;
+    if (isMusicMode && isHovered) return 340;
     if ((showPowerPulse || showLowBatteryPulse) && !isHovered) return 200;
 
     let w = 140;
@@ -1047,11 +1049,11 @@ function App() {
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
                                 {isPlaying ? (
-                                  <svg width="18" height="18" viewBox="0 0 33 35" fill="currentColor">
+                                  <svg width="24" height="24" viewBox="0 0 33 35" fill="currentColor">
                                     <path d="M 7.390625,0.81640625 L 11.880859375,0.81640625 C 13.234375,0.81640625 13.771484375,1.375 13.771484375,2.728515625 L 13.771484375,31.560546875 C 13.771484375,32.935546875 13.234375,33.47265625 11.880859375,33.47265625 L 7.390625,33.47265625 C 6.015625,33.47265625 5.478515625,32.935546875 5.478515625,31.560546875 L 5.478515625,2.728515625 C 5.478515625,1.375 6.015625,0.81640625 7.390625,0.81640625 Z M 20.8828125,0.81640625 L 25.373046875,0.81640625 C 26.748046875,0.81640625 27.28515625,1.375 27.28515625,2.728515625 L 27.28515625,31.560546875 C 27.28515625,32.935546875 26.748046875,33.47265625 25.373046875,33.47265625 L 20.8828125,33.47265625 C 19.529296875,33.47265625 18.9921875,32.935546875 18.9921875,31.560546875 L 18.9921875,2.728515625 C 18.9921875,1.375 19.529296875,0.81640625 20.8828125,0.81640625 Z" />
                                   </svg>
                                 ) : (
-                                  <svg width="22" height="22" viewBox="0 0 42 41" fill="currentColor" style={{ marginLeft: '2px' }}>
+                                  <svg width="28" height="28" viewBox="0 0 42 41" fill="currentColor" style={{ marginLeft: '2px' }}>
                                     <path d="M 6.91796875,2.298828125 C 7.34765625,2.298828125 7.669921875,2.40625 8.20703125,2.728515625 L 35.083984375,18.583984375 C 35.8359375,18.9921875 36.287109375,19.400390625 36.287109375,20.087890625 C 36.287109375,20.75390625 35.8359375,21.162109375 35.083984375,21.591796875 L 8.20703125,37.447265625 C 7.669921875,37.76953125 7.34765625,37.876953125 6.91796875,37.876953125 C 6.05859375,37.876953125 5.478515625,37.25390625 5.478515625,36.1796875 L 5.478515625,3.99609375 C 5.478515625,2.921875 6.05859375,2.298828125 6.91796875,2.298828125 Z" />
                                   </svg>
                                 )}
@@ -1391,7 +1393,7 @@ function PauseIcon() {
 
 function VolumeLowIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
       <path d="M11 5L6 9H2v6h4l5 4V5z" />
     </svg>
   );
@@ -1399,10 +1401,10 @@ function VolumeLowIcon() {
 
 function VolumeHighIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
-      <path d="M11 5L6 9H2v6h4l5 4V5z" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+      <path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" strokeWidth="2.5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" strokeWidth="2.5" />
     </svg>
   );
 }
