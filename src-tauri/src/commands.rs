@@ -839,12 +839,29 @@ pub async fn capture_window_thumbnail(hwnd: isize, max_width: u32, max_height: u
     tauri::async_runtime::spawn_blocking(move || unsafe {
         use windows::Win32::Foundation::{HWND, RECT};
         use windows::Win32::Graphics::Gdi::{CreateCompatibleDC, CreateCompatibleBitmap, SelectObject, DeleteObject, DeleteDC, GetDC, ReleaseDC, GetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC};
-        use windows::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT, IsWindow};
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT, IsWindow, IsIconic, ShowWindow, SW_SHOWNOACTIVATE, SW_MINIMIZE};
         use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
         #[link(name = "user32")]
         extern "system" { pub fn PrintWindow(hwnd: HWND, hdcBlt: HDC, nFlags: u32) -> i32; }
+
         let hwnd = HWND(hwnd as *mut _);
         if !IsWindow(Some(hwnd)).as_bool() { return None; }
+
+        let hwnd_key = hwnd.0 as isize;
+        let is_minimized = IsIconic(hwnd).as_bool();
+
+        if is_minimized {
+            if let Some(cache) = crate::state::THUMBNAIL_CACHE.get() {
+                if let Ok(guard) = cache.lock() {
+                    if let Some((cached, ts)) = guard.get(&hwnd_key) {
+                        if crate::utils::get_now_ms() - *ts < 60_000 {
+                            return Some(cached.clone());
+                        }
+                    }
+                }
+            }
+        }
+
         let mut rect = RECT::default();
         let _ = DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect as *mut _ as *mut _, std::mem::size_of::<RECT>() as u32);
         if rect.right == 0 && rect.bottom == 0 && windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() { return None; }
@@ -858,11 +875,20 @@ pub async fn capture_window_thumbnail(hwnd: isize, max_width: u32, max_height: u
             }
         }
         if width <= 100 || height <= 100 { return None; }
+
+        let mut did_restore = false;
+        if is_minimized {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            did_restore = true;
+        }
+
         let hdc_screen = GetDC(None);
         let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
         let hbm_mem = CreateCompatibleBitmap(hdc_screen, width, height);
         let h_old = SelectObject(hdc_mem, hbm_mem.into());
         let success = PrintWindow(hwnd, hdc_mem, 2);
+
         let mut result = None;
         if success != 0 {
             let mut bmi = BITMAPINFO {
@@ -893,6 +919,19 @@ pub async fn capture_window_thumbnail(hwnd: isize, max_width: u32, max_height: u
         let _ = DeleteObject(hbm_mem.into());
         let _ = DeleteDC(hdc_mem);
         ReleaseDC(None, hdc_screen);
+
+        if did_restore {
+            let _ = ShowWindow(hwnd, SW_MINIMIZE);
+        }
+
+        if let Some(ref img) = result {
+            if let Some(cache) = crate::state::THUMBNAIL_CACHE.get() {
+                if let Ok(mut guard) = cache.lock() {
+                    guard.insert(hwnd_key, (img.clone(), crate::utils::get_now_ms()));
+                }
+            }
+        }
+
         result
     }).await.map_err(|e| e.to_string())
 }

@@ -76,6 +76,131 @@ pub fn setup_taskbar_hook() {
     }
 }
 
+static mut THUMBNAIL_HOOK_HANDLE: Option<windows::Win32::UI::Accessibility::HWINEVENTHOOK> = None;
+
+pub fn setup_thumbnail_capture(_app_handle: AppHandle) {
+    unsafe {
+        use windows::Win32::UI::Accessibility::SetWinEventHook;
+        use windows::Win32::UI::WindowsAndMessaging::{WINEVENT_OUTOFCONTEXT, EVENT_SYSTEM_MINIMIZESTART};
+
+        let hook = SetWinEventHook(
+            EVENT_SYSTEM_MINIMIZESTART,
+            EVENT_SYSTEM_MINIMIZESTART,
+            None,
+            Some(thumbnail_capture_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+        THUMBNAIL_HOOK_HANDLE = Some(hook);
+    }
+}
+
+unsafe extern "system" fn thumbnail_capture_proc(
+    _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
+    _event: u32,
+    hwnd: HWND,
+    _id_object: i32,
+    _id_child: i32,
+    _event_thread: u32,
+    _ms_event_time: u32,
+) {
+    if hwnd.0.is_null() { return; }
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, GetWindowLongW, GWL_EXSTYLE, WS_EX_TOOLWINDOW};
+
+    if !IsWindow(Some(hwnd)).as_bool() { return; }
+    let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+    if (ex_style & WS_EX_TOOLWINDOW.0) != 0 { return; }
+
+    let my_pid = std::process::id();
+    let mut pid = 0u32;
+    windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == my_pid { return; }
+
+    let mut text = [0u16; 512];
+    let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut text);
+    if len == 0 { return; }
+
+    let hwnd_raw = hwnd.0 as isize;
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        unsafe {
+            let hwnd = HWND(hwnd_raw as *mut _);
+            if !IsWindow(Some(hwnd)).as_bool() { return; }
+
+            use windows::Win32::Foundation::{HWND, RECT};
+            use windows::Win32::Graphics::Gdi::{CreateCompatibleDC, CreateCompatibleBitmap, SelectObject, DeleteObject, DeleteDC, GetDC, ReleaseDC, GetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS};
+            use windows::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT};
+            use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+            #[link(name = "user32")]
+            extern "system" { pub fn PrintWindow(hwnd: HWND, hdcBlt: windows::Win32::Graphics::Gdi::HDC, nFlags: u32) -> i32; }
+
+            let mut rect = RECT::default();
+            let _ = DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect as *mut _ as *mut _, std::mem::size_of::<RECT>() as u32);
+            if rect.right == 0 && rect.bottom == 0 && windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() { return; }
+            let mut width = rect.right - rect.left;
+            let mut height = rect.bottom - rect.top;
+            if width <= 10 || height <= 10 {
+                let mut wp = WINDOWPLACEMENT { length: std::mem::size_of::<WINDOWPLACEMENT>() as u32, ..Default::default() };
+                if GetWindowPlacement(hwnd, &mut wp).is_ok() {
+                    width = wp.rcNormalPosition.right - wp.rcNormalPosition.left;
+                    height = wp.rcNormalPosition.bottom - wp.rcNormalPosition.top;
+                }
+            }
+            if width <= 100 || height <= 100 { return; }
+
+            let hdc_screen = GetDC(None);
+            let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
+            let hbm_mem = CreateCompatibleBitmap(hdc_screen, width, height);
+            let h_old = SelectObject(hdc_mem, hbm_mem.into());
+            let success = PrintWindow(hwnd, hdc_mem, 2);
+
+            let mut result = None;
+            if success != 0 {
+                let mut bmi = BITMAPINFO {
+                    bmiHeader: BITMAPINFOHEADER { biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32, biWidth: width, biHeight: -height, biPlanes: 1, biBitCount: 32, biCompression: BI_RGB.0, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0 },
+                    bmiColors: [windows::Win32::Graphics::Gdi::RGBQUAD::default(); 1],
+                };
+                let mut pixels = vec![0u8; (width * height * 4) as usize];
+                if GetDIBits(hdc_mem, hbm_mem, 0, height as u32, Some(pixels.as_mut_ptr() as *mut _), &mut bmi, DIB_RGB_COLORS) != 0 {
+                    for chunk in pixels.chunks_exact_mut(4) { let b = chunk[0]; let r = chunk[2]; chunk[0] = r; chunk[2] = b; chunk[3] = 255; }
+                    if let Ok(Some(png_base64)) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        if let Some(mut img) = image::RgbaImage::from_raw(width as u32, height as u32, pixels) {
+                            let max_w = 320u32;
+                            let max_h = 200u32;
+                            if img.width() > max_w || img.height() > max_h {
+                                let dyn_img = image::DynamicImage::ImageRgba8(img);
+                                img = dyn_img.resize(max_w, max_h, image::imageops::FilterType::Triangle).into_rgba8();
+                            }
+                            let mut buf = std::io::Cursor::new(Vec::new());
+                            if image::write_buffer_with_format(&mut buf, &img, img.width(), img.height(), image::ColorType::Rgba8, image::ImageFormat::Png).is_ok() {
+                                use base64::Engine;
+                                let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+                                return Some(format!("data:image/png;base64,{}", b64));
+                            }
+                        }
+                        None
+                    })) { result = Some(png_base64); }
+                }
+            }
+            SelectObject(hdc_mem, h_old);
+            let _ = DeleteObject(hbm_mem.into());
+            let _ = DeleteDC(hdc_mem);
+            ReleaseDC(None, hdc_screen);
+
+            if let Some(img) = result {
+                if let Some(cache) = crate::state::THUMBNAIL_CACHE.get() {
+                    if let Ok(mut guard) = cache.lock() {
+                        guard.insert(hwnd.0 as isize, (img, crate::utils::get_now_ms()));
+                    }
+                }
+            }
+        }
+    });
+}
+
 unsafe extern "system" fn taskbar_event_proc(
     _h_win_event_hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
     _event: u32,
@@ -1291,5 +1416,126 @@ pub fn unregister_appbar_native(hwnd: HWND) {
         use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_REMOVE};
         let mut abd = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, hWnd: hwnd, ..Default::default() };
         SHAppBarMessage(ABM_REMOVE, &mut abd);
+    }
+}
+
+fn reposition_all_windows(app_handle: &AppHandle) {
+    if MAIN_APPBAR_REGISTERED.load(Ordering::Relaxed) {
+        if let Some(main_win) = app_handle.get_webview_window("main") {
+            register_appbar(main_win);
+        }
+    }
+    if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
+        if let Some(dock_win) = app_handle.get_webview_window("dock") {
+            register_dock_appbar(dock_win);
+        }
+    }
+    if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) {
+        set_taskbar_visibility(false, false);
+    }
+    sync_overlays(app_handle);
+}
+
+pub fn setup_display_change_monitor(app_handle: AppHandle) {
+    let _ = crate::state::DISPLAY_MONITOR_HANDLE.set(app_handle);
+
+    std::thread::spawn(|| {
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::*;
+            use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+
+            let class_name = windows::core::PCSTR(b"BloomDisplayMonitor\0".as_ptr());
+            let h_inst = GetModuleHandleW(None).unwrap_or_default().into();
+
+            let wnd_class = WNDCLASSEXA {
+                cbSize: std::mem::size_of::<WNDCLASSEXA>() as u32,
+                lpfnWndProc: Some(display_monitor_proc),
+                hInstance: h_inst,
+                lpszClassName: class_name,
+                ..Default::default()
+            };
+
+            if RegisterClassExA(&wnd_class) == 0 {
+                return;
+            }
+
+            let hwnd = CreateWindowExA(
+                WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
+                class_name,
+                windows::core::PCSTR::null(),
+                WINDOW_STYLE::default(),
+                0,
+                0,
+                0,
+                0,
+                None,
+                None,
+                Some(h_inst),
+                None,
+            );
+
+            let hwnd = match hwnd {
+                Ok(h) => h,
+                Err(_) => return,
+            };
+
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, Some(hwnd), 0, 0).as_bool() {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+    });
+}
+
+unsafe extern "system" fn display_monitor_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    use windows::Win32::Foundation::LRESULT;
+
+    const WM_DISPLAYCHANGE: u32 = 0x007E;
+    const WM_POWERBROADCAST: u32 = 0x0218;
+    const PBT_APMPOWERSTATUSCHANGE: u32 = 0x000A;
+    const PBT_APMRESUMESUSPEND: u32 = 0x0007;
+
+    match msg {
+        WM_DISPLAYCHANGE => {
+            let now = get_now_ms();
+            let last = LAST_DISPLAY_CHANGE_MS.load(Ordering::Relaxed);
+            if now - last > 500 {
+                LAST_DISPLAY_CHANGE_MS.store(now, Ordering::Relaxed);
+                if let Some(app_handle) = DISPLAY_MONITOR_HANDLE.get() {
+                    let ah = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        reposition_all_windows(&ah);
+                    });
+                }
+            }
+            LRESULT(0)
+        }
+        WM_POWERBROADCAST => {
+            let pw = wparam.0 as u32;
+            if pw == PBT_APMPOWERSTATUSCHANGE || pw == PBT_APMRESUMESUSPEND {
+                let now = get_now_ms();
+                let last = LAST_DISPLAY_CHANGE_MS.load(Ordering::Relaxed);
+                if now - last > 1000 {
+                    LAST_DISPLAY_CHANGE_MS.store(now, Ordering::Relaxed);
+                    if let Some(app_handle) = DISPLAY_MONITOR_HANDLE.get() {
+                        let ah = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                            reposition_all_windows(&ah);
+                        });
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }

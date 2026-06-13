@@ -2,7 +2,7 @@ use std::sync::{atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicI64}, Mutex, On
 use std::sync::mpsc::Sender;
 use std::collections::HashMap;
 use crate::types::{SystemCommand, IntRect, AppInfo};
-use tauri::{PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
 
 pub static mut COMMAND_SENDER: Option<Sender<SystemCommand>> = None;
 pub static MAIN_APPBAR_REGISTERED: AtomicBool = AtomicBool::new(false);
@@ -30,3 +30,8 @@ pub static ANY_MEDIA_PLAYING: AtomicBool = AtomicBool::new(false);
 
 pub static MAIN_WINDOW_RECT: Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>> = Mutex::new(None);
 pub static DOCK_WINDOW_RECT: Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>> = Mutex::new(None);
+
+pub static DISPLAY_MONITOR_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+pub static LAST_DISPLAY_CHANGE_MS: AtomicI64 = AtomicI64::new(0);
+
+pub static THUMBNAIL_CACHE: OnceLock<Mutex<HashMap<isize, (String, i64)>>> = OnceLock::new();

@@ -154,6 +154,11 @@ fn main() {
 
             sync_overlays(app.handle());
             setup_cursor_monitor(app.handle().clone());
+            setup_display_change_monitor(app.handle().clone());
+            {
+                let _ = crate::state::THUMBNAIL_CACHE.set(std::sync::Mutex::new(std::collections::HashMap::new()));
+            }
+            setup_thumbnail_capture(app.handle().clone());
             trigger_app_scan();
             let tx = setup_system_worker(app.handle().clone());
             unsafe {

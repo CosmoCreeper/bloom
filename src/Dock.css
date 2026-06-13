@@ -67,7 +67,7 @@ body {
   align-items: center;
   gap: 8px;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 100;
   min-width: 160px;
   min-height: 100px;
@@ -94,15 +94,22 @@ body {
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  transition: transform 0.2s ease;
-  padding: 4px;
+  transition: all 0.15s ease;
+  padding: 6px;
   border-radius: 8px;
   pointer-events: auto;
+  border: 2px solid transparent;
 }
 
 .preview-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   transform: translateY(-4px);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.preview-item:active {
+  transform: translateY(-1px) scale(0.98);
+  border-color: rgba(59, 130, 246, 0.9);
 }
 
 .preview-item img {
