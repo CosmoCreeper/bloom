@@ -408,11 +408,11 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
             if let Some(ref mut hwnds) = app.all_hwnds {
                 hwnds.sort_by(|a, b| {
                     let ts_a = focus_guard.as_ref()
-                        .and_then(|g| g.get(&(a.0 as isize)))
+                        .and_then(|g| g.get(&a.0))
                         .copied()
                         .unwrap_or(0);
                     let ts_b = focus_guard.as_ref()
-                        .and_then(|g| g.get(&(b.0 as isize)))
+                        .and_then(|g| g.get(&b.0))
                         .copied()
                         .unwrap_or(0);
                     ts_b.cmp(&ts_a)
