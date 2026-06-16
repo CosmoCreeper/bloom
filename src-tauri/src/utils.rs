@@ -33,18 +33,40 @@ pub fn resolve_shortcut(path: &str) -> Option<(String, String)> {
 
 static mut ORIGINAL_TRAY_RECT: Option<windows::Win32::Foundation::RECT> = None;
 static mut ORIGINAL_SEC_TRAY_RECT: Option<windows::Win32::Foundation::RECT> = None;
+static ORIGINAL_TASKBAR_STATE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
 
 pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) {
     unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, ShowWindow, SW_HIDE, SW_SHOW, GetWindowRect};
-        use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_SETSTATE};
+        use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_SETSTATE, ABM_GETSTATE};
 
         let tray_class = windows::core::PCSTR(b"Shell_TrayWnd\0".as_ptr());
         let secondary_tray_class = windows::core::PCSTR(b"Shell_SecondaryTrayWnd\0".as_ptr());
 
+        // Save original taskbar state before modifying
+        if ORIGINAL_TASKBAR_STATE.load(std::sync::atomic::Ordering::Relaxed) == -1 {
+            let mut get_abd = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, ..Default::default() };
+            let original_state = SHAppBarMessage(ABM_GETSTATE, &mut get_abd);
+            ORIGINAL_TASKBAR_STATE.store(original_state as i32, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let state_val = if visible {
+            let orig = ORIGINAL_TASKBAR_STATE.load(std::sync::atomic::Ordering::Relaxed);
+            if orig != -1 {
+                orig as isize
+            } else {
+                if always_on_top { 2 } else { 1 }
+            }
+        } else {
+            1 // Force Auto-hide when hiding
+        };
+
         // 1. Set the taskbar state (Auto-hide or Always-on-top)
-        // ABS_AUTOHIDE = 0x1, ABS_ALWAYSONTOP = 0x2 
-        let mut abd = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, lParam: windows::Win32::Foundation::LPARAM(if always_on_top { 2 } else { 1 }), ..Default::default() };
+        let mut abd = APPBARDATA { 
+            cbSize: std::mem::size_of::<APPBARDATA>() as u32, 
+            lParam: windows::Win32::Foundation::LPARAM(state_val), 
+            ..Default::default() 
+        };
         SHAppBarMessage(ABM_SETSTATE, &mut abd);
 
         // 2. Control visibility of the primary taskbar

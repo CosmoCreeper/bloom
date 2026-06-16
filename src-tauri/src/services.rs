@@ -963,10 +963,10 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                     if let Ok(region) = DOCK_RECT.try_lock() {
                                         if let Some(r) = *region {
                                             let scale = dock_win.scale_factor().unwrap_or(1.0);
-                                            let rx = win_pos.x + (r.x as f64 * scale) as i32 - 10;
-                                            let ry = win_pos.y + (r.y as f64 * scale) as i32 - 10;
-                                            let rw = (r.width as f64 * scale) as i32 + 20;
-                                            let rh = (r.height as f64 * scale) as i32 + 20;
+                                            let rx = win_pos.x + (r.x as f64 * scale) as i32 - (30.0 * scale) as i32;
+                                            let ry = win_pos.y + (r.y as f64 * scale) as i32 - (30.0 * scale) as i32;
+                                            let rw = (r.width as f64 * scale) as i32 + (60.0 * scale) as i32;
+                                            let rh = (r.height as f64 * scale) as i32 + (60.0 * scale) as i32;
                                             if pt.x >= rx && pt.x <= (rx + rw) && pt.y >= ry && pt.y <= (ry + rh) {
                                                 is_click_interactive = true;
                                             }
@@ -978,10 +978,10 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                         if let Ok(rect) = MENU_RECT.try_lock() {
                                             if let Some(r) = *rect {
                                                 let scale = dock_win.scale_factor().unwrap_or(1.0);
-                                                let rx = win_pos.x + (r.x as f64 * scale) as i32 - 5;
-                                                let ry = win_pos.y + (r.y as f64 * scale) as i32 - 5;
-                                                let rw = (r.width as f64 * scale) as i32 + 10;
-                                                let rh = (r.height as f64 * scale) as i32 + 10;
+                                                let rx = win_pos.x + (r.x as f64 * scale) as i32 - (5.0 * scale) as i32;
+                                                let ry = win_pos.y + (r.y as f64 * scale) as i32 - (5.0 * scale) as i32;
+                                                let rw = (r.width as f64 * scale) as i32 + (10.0 * scale) as i32;
+                                                let rh = (r.height as f64 * scale) as i32 + (10.0 * scale) as i32;
                                                 if pt.x >= rx && pt.x <= (rx + rw) && pt.y >= ry && pt.y <= (ry + rh) {
                                                     is_click_interactive = true;
                                                 }
@@ -993,7 +993,8 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
 
                             // 3. Hot-edge detection (Bottom edge)
                             let in_dock_hover = DOCK_IS_HOVERED.load(Ordering::Relaxed);
-                            let at_bottom_edge = pt.y >= (cached_monitor_pos.y + cached_monitor_size.height as i32 - 2) && 
+                            let scale = dock_win.scale_factor().unwrap_or(1.0);
+                            let at_bottom_edge = pt.y >= (cached_monitor_pos.y + cached_monitor_size.height as i32 - (8.0 * scale) as i32) && 
                                                  pt.x >= cached_monitor_pos.x && pt.x <= (cached_monitor_pos.x + cached_monitor_size.width as i32);
                             
                             if at_bottom_edge || in_dock_hover {
@@ -1007,7 +1008,7 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 last_edge_hover = Some(final_dock_hover);
                             }
 
-                            let should_ignore = !is_click_interactive && !MENU_IS_OPEN.load(Ordering::Relaxed);
+                            let should_ignore = !is_click_interactive && !final_dock_hover && !MENU_IS_OPEN.load(Ordering::Relaxed);
                             if last_dock_ignore != Some(should_ignore) {
                                 let _ = dock_win.set_ignore_cursor_events(should_ignore);
                                 last_dock_ignore = Some(should_ignore);
@@ -1021,7 +1022,8 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                             // 3. Hot-edge detection (Top edge)
                             let in_notch_hover = NOTCH_IS_HOVERED.load(Ordering::Relaxed);
                             let mut is_notch_hovered = false;
-                            let at_top_edge = pt.y <= (cached_monitor_pos.y + 2) && 
+                            let scale = main_win.scale_factor().unwrap_or(1.0);
+                            let at_top_edge = pt.y <= (cached_monitor_pos.y + (8.0 * scale) as i32) && 
                                               pt.x >= cached_monitor_pos.x && pt.x <= (cached_monitor_pos.x + cached_monitor_size.width as i32);
                             
                             if at_top_edge || in_notch_hover {
@@ -1061,7 +1063,7 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 last_top_edge_hover = Some(final_notch_hover);
                             }
 
-                            let final_ignore = !is_click_interactive && !MENU_IS_OPEN.load(Ordering::Relaxed);
+                            let final_ignore = !is_click_interactive && !final_notch_hover && !MENU_IS_OPEN.load(Ordering::Relaxed);
                             if last_main_ignore != Some(final_ignore) {
                                 let _ = main_win.set_ignore_cursor_events(final_ignore);
                                 last_main_ignore = Some(final_ignore);
@@ -1298,6 +1300,17 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
                 let _ = window.show();
             }
         }
+    } else {
+        let w = window.clone();
+        tauri::async_runtime::spawn(async move {
+            for _ in 0..10 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                    register_appbar(w);
+                    break;
+                }
+            }
+        });
     }
 }
 
@@ -1372,6 +1385,17 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
                 let _ = window.show();
             }
         }
+    } else {
+        let w = window.clone();
+        tauri::async_runtime::spawn(async move {
+            for _ in 0..10 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                    register_dock_appbar(w);
+                    break;
+                }
+            }
+        });
     }
 }
 
