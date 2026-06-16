@@ -135,11 +135,7 @@ function SettingsApp() {
       }
     } catch (e) {
       console.error("Updater error:", e);
-      // In development or if the update server is unreachable, be more graceful
       setUpdateStatus("error");
-      
-      // If we're in dev mode or it's an expected network failure, we can handle it here
-      // if (String(e).includes("...")) ...
     }
   };
 

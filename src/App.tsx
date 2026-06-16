@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef, memo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { check } from "@tauri-apps/plugin-updater";
 import "./App.css";
 
 // Simple SVG icons
@@ -85,6 +86,30 @@ function BatteryIcon({ charging, level, threshold = 20 }: { charging: boolean; l
   );
 }
 
+function GreenDownArrowIcon() {
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '18px',
+      height: '18px',
+      borderRadius: '50%',
+      background: 'rgba(50, 215, 75, 0.15)',
+      border: '1px solid rgba(50, 215, 75, 0.35)',
+      boxShadow: '0 0 8px rgba(50, 215, 75, 0.25)',
+      flexShrink: 0,
+      verticalAlign: 'middle'
+    }}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#32D74B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="4" x2="12" y2="16"></line>
+        <polyline points="18 10 12 16 6 10"></polyline>
+        <line x1="6" y1="20" x2="18" y2="20"></line>
+      </svg>
+    </div>
+  );
+}
+
 const Visualizer = memo(function Visualizer({ isPlaying, bars = 5, height = 20 }: { isPlaying: boolean; bars?: number; height?: number }) {
   const [audioData, setAudioData] = useState<number[]>(new Array(bars).fill(0.18));
 
@@ -156,6 +181,7 @@ function App() {
   const powerPulseTimeoutRef = useRef<any>(null);
   const lowBatteryPulseShownRef = useRef<boolean>(false);
 
+
   useEffect(() => {
     if (isReady && prevChargingRef.current !== null && prevChargingRef.current !== isCharging) {
       setShowPowerPulse(true);
@@ -202,6 +228,33 @@ function App() {
   useEffect(() => {
     setWindowLabel(getCurrentWebviewWindow().label);
   }, []);
+
+  // Update state
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [showUpdatePulse, setShowUpdatePulse] = useState(false);
+
+  useEffect(() => {
+    if (windowLabel !== 'main') return;
+
+    const checkForUpdates = async () => {
+      try {
+        const update = await check();
+        if (update?.available) {
+          setUpdateAvailable(true);
+          setShowUpdatePulse(true);
+          const timer = setTimeout(() => {
+            setShowUpdatePulse(false);
+          }, 6000);
+          return () => clearTimeout(timer);
+        }
+      } catch (e) {
+        console.error("Failed to check for updates:", e);
+      }
+    };
+
+    checkForUpdates();
+  }, [windowLabel]);
+
   const [isVisible, setIsVisible] = useState(true);
   const [isImpacted, setIsImpacted] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -328,6 +381,15 @@ function App() {
       setSettingsAmbienceEnabled(getVal("bloom-media-ambience-enabled", "true") !== "false");
       setSettingsCornersEnabled(getVal("bloom-corners-enabled", "false") === "true");
       setTempUnit(getVal("bloom-temp-unit", "celsius") as string);
+
+      const cachedTemp = settings["bloom-weather-cached-temp"] ?? localStorage.getItem("bloom-weather-cached-temp");
+      if (cachedTemp !== undefined && cachedTemp !== null) {
+        setTemperature(Number(cachedTemp));
+      }
+      const cachedCond = settings["bloom-weather-cached-condition"] ?? localStorage.getItem("bloom-weather-cached-condition");
+      if (cachedCond) {
+        setWeatherCondition(String(cachedCond));
+      }
 
       const thresholdStr = getVal("bloom-low-battery-threshold", "20");
       if (thresholdStr) setLowBatteryThreshold(parseInt(thresholdStr as string));
@@ -660,7 +722,9 @@ function App() {
         );
         const data = await response.json();
         const temp = data.current.temperature_2m;
-        setTemperature(Math.round(temp));
+        const roundedTemp = Math.round(temp);
+        setTemperature(roundedTemp);
+        invoke("save_setting", { key: "bloom-weather-cached-temp", value: roundedTemp }).catch(() => {});
 
         // Simple weather code mapping
         const code = data.current.weather_code;
@@ -685,17 +749,27 @@ function App() {
           99: "Stormy",
           224: "Stormy",
         };
-        setWeatherCondition(conditions[code] || "Unknown");
+        const cond = conditions[code] || "Unknown";
+        setWeatherCondition(cond);
+        invoke("save_setting", { key: "bloom-weather-cached-condition", value: cond }).catch(() => {});
       } catch (e) {
         console.log("Weather fetch failed");
+        if (import.meta.env.DEV) {
+          // Dev mock temperature if offline/rate-limited
+          const mockTemp = tempUnit === "fahrenheit" ? 72 : 22;
+          setTemperature(mockTemp);
+          setWeatherCondition("Partly Cloudy");
+        }
       }
     };
 
     const init = async () => {
       try {
-        // Check for manual coordinates first
-        const savedLat = localStorage.getItem("bloom-weather-lat");
-        const savedLon = localStorage.getItem("bloom-weather-lon");
+        // Load coordinates from settings.json
+        const settings = (await invoke("load_settings").catch(() => ({}))) as Record<string, any>;
+        const savedLat = settings["bloom-weather-lat"] || localStorage.getItem("bloom-weather-lat");
+        const savedLon = settings["bloom-weather-lon"] || localStorage.getItem("bloom-weather-lon");
+
         if (savedLat && savedLon) {
           await fetchWeather(parseFloat(savedLat), parseFloat(savedLon));
           return;
@@ -946,7 +1020,7 @@ function App() {
     if (bloomMode === 'command-center' && isHovered) return 350;
     if (bloomMode === 'status' && isHovered) return 280;
     if (isMusicMode && isHovered) return 340;
-    if ((showPowerPulse || showLowBatteryPulse) && !isHovered) return 200;
+    if ((showPowerPulse || showLowBatteryPulse || showUpdatePulse) && !isHovered) return 200;
 
     let w = 140;
     if (isMusicMode) {
@@ -1188,19 +1262,35 @@ function App() {
                   >
                     <div className="main-row">
                       <AnimatePresence mode="wait">
-                        {(showPowerPulse || showLowBatteryPulse) && !isHovered ? (
-                          <motion.div
-                            key="pulse-view"
-                            initial={{ opacity: 0, scale: 0.95, filter: "blur(4px)" }}
-                            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                            exit={{ opacity: 0, scale: 1.05, filter: "blur(4px)" }}
-                            className="power-pulse-content"
-                          >
-                            <BatteryIcon charging={isCharging} level={batteryLevel} threshold={lowBatteryThreshold} />
-                            <span className="label" style={{ color: showLowBatteryPulse ? "#FF453A" : "inherit" }}>
-                              {showLowBatteryPulse ? "Low Battery" : (isCharging ? "Charging" : "On Battery")} • {batteryLevel}%
-                            </span>
-                          </motion.div>
+                        {(showPowerPulse || showLowBatteryPulse || showUpdatePulse) && !isHovered ? (
+                          showUpdatePulse ? (
+                            <motion.div
+                              key="update-pulse-view"
+                              initial={{ opacity: 0, scale: 0.95, filter: "blur(4px)" }}
+                              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                              exit={{ opacity: 0, scale: 1.05, filter: "blur(4px)" }}
+                              className="power-pulse-content"
+                            >
+                              <GreenDownArrowIcon />
+                              <span className="label" style={{ color: "#32D74B" }}>
+                                Update Available
+                              </span>
+                            </motion.div>
+                          ) : (
+                            <motion.div
+                              key="pulse-view"
+                              initial={{ opacity: 0, scale: 0.95, filter: "blur(4px)" }}
+                              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                              exit={{ opacity: 0, scale: 1.05, filter: "blur(4px)" }}
+                              className="power-pulse-content"
+                            >
+                              {updateAvailable && <GreenDownArrowIcon />}
+                              <BatteryIcon charging={isCharging} level={batteryLevel} threshold={lowBatteryThreshold} />
+                              <span className="label" style={{ color: showLowBatteryPulse ? "#FF453A" : "inherit" }}>
+                                {showLowBatteryPulse ? "Low Battery" : (isCharging ? "Charging" : "On Battery")} • {batteryLevel}%
+                              </span>
+                            </motion.div>
+                          )
                         ) : (
                           <motion.div
                             key="standard-view"
@@ -1210,8 +1300,8 @@ function App() {
                             exit={{ opacity: 0 }}
                           >
                             {/* Left: visualizer (music) or weather (command-center, calendar) */}
-                            {isMusicMode && settingsVisualizerEnabled ? (
-                              <div className="side-content left">
+                            <div className="side-content left">
+                              {isMusicMode && settingsVisualizerEnabled ? (
                                 <AnimatePresence>
                                   {settingsVisualizerEnabled && (
                                     <motion.div
@@ -1224,9 +1314,7 @@ function App() {
                                     </motion.div>
                                   )}
                                 </AnimatePresence>
-                              </div>
-                            ) : (!isMusicMode && isHovered && settingsWeatherEnabled && temperature !== null) ? (
-                              <div className="side-content left">
+                              ) : (!isMusicMode && isHovered && settingsWeatherEnabled && temperature !== null) ? (
                                 <motion.div
                                   key="left-weather"
                                   className="passive-features-group"
@@ -1240,11 +1328,8 @@ function App() {
                                     <span className="label">{temperature}°{tempUnit === "fahrenheit" ? "F" : "C"}</span>
                                   </div>
                                 </motion.div>
-                              </div>
-                            ) : (
-                              /* Spacer to keep time centered if the OTHER side has content */
-                              isMusicMode && settingsAlbumArtEnabled && <div className="side-content left" />
-                            )}
+                              ) : null}
+                            </div>
 
                             {/* Center - Time (always visible) */}
                             <div className="time-flip-container" onClick={toggleCalendarMode}>
@@ -1276,8 +1361,8 @@ function App() {
                             </div>
 
                             {/* Right: album art (music) or battery (command-center, calendar) */}
-                            {isMusicMode && settingsAlbumArtEnabled ? (
-                              <div className="side-content right">
+                            <div className="side-content right">
+                              {isMusicMode && settingsAlbumArtEnabled ? (
                                 <AnimatePresence mode="wait">
                                   <motion.button
                                     key="album-art"
@@ -1314,9 +1399,7 @@ function App() {
                                     </div>
                                   </motion.button>
                                 </AnimatePresence>
-                              </div>
-                            ) : (!isMusicMode && isHovered) ? (
-                              <div className="side-content right">
+                              ) : (!isMusicMode && isHovered) ? (
                                 <motion.div
                                   key="right-battery"
                                   className="passive-features-group"
@@ -1326,15 +1409,13 @@ function App() {
                                   transition={{ duration: 0.2 }}
                                 >
                                   <div className="passive-feature">
+                                    {updateAvailable && <GreenDownArrowIcon />}
                                     <BatteryIcon charging={isCharging} level={batteryLevel} threshold={lowBatteryThreshold} />
                                     <span className="label">{batteryLevel}%</span>
                                   </div>
                                 </motion.div>
-                              </div>
-                            ) : (
-                              /* Spacer to keep time centered if the OTHER side has content */
-                              isMusicMode && settingsVisualizerEnabled && isPlaying && <div className="side-content right" />
-                            )}
+                              ) : null}
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
