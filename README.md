@@ -1,87 +1,160 @@
-<h1 align="left">
-  <img 
-    src="https://github.com/user-attachments/assets/962887ec-636b-4e0f-90eb-0862c0feefca" 
-    width="24" 
-    style="vertical-align: -4px;"
-  />
-  Bloom
-</h1>
+<div align="center">
 
-### Your Windows, Alive.
+<img 
+  src="https://github.com/user-attachments/assets/962887ec-636b-4e0f-90eb-0862c0feefca" 
+  width="72"
+/>
 
-**Bloom** is a desktop companion that reimagines how you interact with Windows. It moves away from static, rigid interfaces and introduces a workspace that feels natural, fluid, and responsive. 
+# Bloom
 
-By blending high-performance engineering with "mechanical fluidity," Bloom transforms your desktop into a living environment that adapts to your workflow in real-time.
+### Your Windows, alive.
+
+*A desktop companion that moves like thought — fluid, responsive, and unapologetically beautiful.*
+
+<br>
+
+[![Release](https://img.shields.io/github/v/release/SehajveerSingh2005/bloom?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://github.com/SehajveerSingh2005/bloom/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/SehajveerSingh2005/bloom/total?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://github.com/SehajveerSingh2005/bloom/releases)
+[![License](https://img.shields.io/github/license/SehajveerSingh2005/bloom?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://github.com/SehajveerSingh2005/bloom/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/SehajveerSingh2005/bloom?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://github.com/SehajveerSingh2005/bloom)
+
+<br>
+
+<!-- HERO SHOWCASE — full-screen hero image or video goes here -->
+<!-- ![Hero](your-hero-image-or-video-url) -->
+
+</div>
 
 ---
 
-### Showcase
+Bloom is not a skin. It's not a theme pack. It's a ground-up reimagining of how you interact with your Windows desktop — built on a high-performance Rust engine, rendered through physics-driven React animations, and deeply integrated into the Windows shell at a level most apps never touch.
+
+It feels alive because every pixel is in motion. It feels premium because every transition is intentional. It feels like *yours* because it adapts to how you actually work.
+
+---
+
+## The Island
+
+<!-- SHOWCASE: GIF or short clip of the notch expanding, music mode, command center — 3-5 seconds -->
 
 <p align="center">
-<img width="1920" height="1080" alt="full" src="https://github.com/user-attachments/assets/556e7918-3a7d-42d8-afae-e91fba1b638a" />
-<br>
-<img width="430" height="70" alt="notch" src="https://github.com/user-attachments/assets/0d723558-9df4-4214-b20e-4a1f97eb1f22" />
-<br>
-<img width="576" height="102" alt="dock" src="https://github.com/user-attachments/assets/96229f0e-1246-4baf-b8ad-3e8f77142a12" />
-<br>
+  <img width="430" height="70" alt="Bloom Island" src="https://github.com/user-attachments/assets/0d723558-9df4-4214-b20e-4a1f97eb1f22" />
 </p>
----
 
-### The Bloom Experience
+At the top of your screen lives a context-aware hub that morphs based on what you're doing. Swipe or scroll left and right to cycle through four modes:
 
-#### The Bloom Island
-A smart, adaptive notch at the top of your screen. It’s a context-aware hub that knows what you need before you do.
-- **Music in Motion**: A reactive visualizer and media engine that expands when you're listening and tucks away when you're done.
-- **Glanceable Status**: Real-time monitoring for your battery, weather, and connection—delivered through fluid "Power Pulses."
-- **Integrated Focus**: Switch to a calendar view or a Pomodoro timer with a simple click to stay in your flow.
+- **Music** — A reactive audio visualizer powered by real-time WASAPI loopback capture and DFT analysis. Album art, track info, playback controls — all from a single glance. The visualizer bars respond to 5 frequency bands with individually tuned spring physics.
 
-#### The High-Fidelity Dock
-A taskbar that breathes. Inspired by modern design but engineered for Windows, the Dock features intelligent auto-hide, physics-based reordering, and native app integration. 
+- **Command Center** — WiFi, Bluetooth, dock/notch mode toggles, Do Not Disturb, system tray access, volume and brightness sliders. A minimal control surface that replaces digging through settings menus.
 
-#### Pure Fluidity
-Every interaction in Bloom is powered by a custom physics engine. Transitions aren't just "animations"—they are smooth, spring-loaded movements that respond instantly to your touch.
+- **Status** — Battery status, weather, and more — all at a glance. More coming soon.
 
-#### Professional Aesthetics
-- **Mica Integration**: Deeply honors Windows 11 design language with native translucency.
-- **Minimalist HUD**: Replaces the bulky system volume indicator with a sleek, edge-anchored overlay.
-- **Rounded Harmony**: Adds subtle rounded corners to your screen for a softer, more modern display boundary.
+- **Calendar** — A month view with an integrated Pomodoro timer. Focus without leaving your workspace.
+
+Every mode transition is a spring-loaded animation — no easing curves, no linear interpolations. Width, height, border-radius, and position each animate with independent spring parameters, creating a staggered, mechanical fluidity that feels physical.
 
 ---
 
-### Engineering
+## The Dock
 
-Bloom is built for those who demand premium aesthetics without sacrificing performance.
-- **Core**: High-efficiency Rust backend (Tauri v2) for zero-jank execution and minimal CPU impact.
-- **UI**: React-powered frontend utilizing `framer-motion` for buttery-smooth state changes.
-- **Native**: Direct integration with `windows-rs` for deep system-level control.
+<!-- SHOWCASE: GIF or clip of dock appearing, drag-reorder, window previews — 3-5 seconds -->
+
+<p align="center">
+  <img width="576" height="102" alt="Bloom Dock" src="https://github.com/user-attachments/assets/96229f0e-1246-4baf-b8ad-3e8f77142a12" />
+</p>
+
+A taskbar that breathes. Bloom's dock floats above your desktop in auto-hide mode by default — appearing when you need it, vanishing when you don't. The native Windows taskbar is suppressed entirely — Bloom *is* your taskbar.
+
+- **Pinned apps** with persistent ordering via drag-and-drop (powered by `framer-motion` Reorder)
+- **Running apps** detected through real-time `EnumWindows` polling
+- **Window previews** captured via `PrintWindow` with a disk-persisted thumbnail cache
+- **Click-through intelligence** — a Rust-side cursor monitor running at 32ms intervals determines when to intercept clicks and when to pass them through to the desktop below
+- **Context menus** for pin/unpin, app search, and Bloom options
 
 ---
 
-### Installation
+## Under the Hood
 
-Bloom requires [Rust](https://rustup.rs/) and [Bun](https://bun.sh/) for development.
+<!-- SHOWCASE: Optional — architecture diagram or a visual showing the 5-window system -->
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/SehajveerSingh2005/bloom.git
-   cd bloom
-   ```
-2. **Install dependencies**:
-   ```bash
-   bun install
-   ```
-3. **Run in development mode**:
-   ```bash
-   bun run tauri dev
-   ```
+Bloom runs **5 independent Tauri webview windows** — each a separate React application — coordinated through a Rust backend that speaks directly to the Windows shell.
 
-To generate a optimized production executable:
+| Window | Purpose |
+|---|---|
+| `main` | The Island (notch) |
+| `dock` | The Dock (taskbar replacement) |
+| `settings` | Mica-backed settings panel |
+| `volume-overlay` | Left-edge volume HUD |
+| `brightness-overlay` | Right-edge brightness HUD |
+
+### The Engine
+
+- **Rust core** (`Tauri v2`) — Zero-jank execution. Global keyboard hooks intercept volume/brightness keys before Windows sees them. WASAPI loopback captures system audio for real-time visualization. COM interfaces control media sessions, audio endpoints, and display brightness. WMI monitors hardware state. `SetWinEventHook` tracks window focus, minimize, and foreground changes.
+
+- **React frontend** (`framer-motion`) — Every animation is a physics simulation. Spring stiffness, damping, and mass are tuned per-property. The result is motion that feels weighty and deliberate, not computed.
+
+- **Deep system integration** — AppBar registration via `SHAppBarMessage`. Taskbar suppression via `ShowWindow(SW_HIDE)` with a hook to prevent re-show. Cursor tracking with `GetCursorInfo` for pixel-accurate click-through. Window thumbnails via `PrintWindow` with a capped image cache. App enumeration through Shell API's `FOLDERID_AppsFolder` and filesystem scanning.
+
+### Performance Philosophy
+
+Bloom is obsessive about idle cost. The audio visualizer skips processing when no media is playing. The cursor monitor sleeps when the dock isn't visible. Window thumbnails are cached and invalidated on focus events. Icon extraction uses a persistent disk cache with in-memory lookup. The entire application is designed to be *there* without being *heavy*.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (stable)
+- [Bun](https://bun.sh/)
+
 ```bash
+# Clone
+git clone https://github.com/SehajveerSingh2005/bloom.git
+cd bloom
+
+# Install
+bun install
+
+# Develop
+bun run tauri dev
+
+# Build for production
 bun run tauri build
 ```
 
 ---
 
-<p align="center">
-  Built with ❤️ for a more beautiful desktop.
-</p>
+## Built With
+
+<table>
+  <tr>
+    <td align="center"><strong>Backend</strong></td>
+    <td align="center"><strong>Frontend</strong></td>
+    <td align="center"><strong>System</strong></td>
+  </tr>
+  <tr>
+    <td>Rust · Tauri v2</td>
+    <td>React 19 · TypeScript · Vite 7</td>
+    <td>windows-rs · WASAPI · WMI · COM</td>
+  </tr>
+  <tr>
+    <td>tokio · serde</td>
+    <td>framer-motion · Tailwind CSS 4</td>
+    <td>SHAppBarMessage · DWM · GDI</td>
+  </tr>
+  <tr>
+    <td>window-vibrancy</td>
+    <td>Rollup (multi-entry)</td>
+    <td>Shell API · Global Hooks</td>
+  </tr>
+</table>
+
+---
+
+<div align="center">
+
+**Bloom is an open-source project.**
+If it makes your desktop a little more alive, consider giving it a star.
+
+</div>
