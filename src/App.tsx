@@ -1041,10 +1041,10 @@ function App() {
       return isImpacted ? 28.9 : 44.2;
     }
     if (bloomMode === 'calendar') return 280;
-    if (bloomMode === 'command-center') return isHovered ? 230 : 34;
-    if (bloomMode === 'status') return 34;
+    if (bloomMode === 'command-center') return isHovered ? 230 : 36;
+    if (bloomMode === 'status') return 36;
     if (isMusicMode && isHovered) return 120;
-    return 34;
+    return 36;
   };
 
   const isCalendarMode = bloomMode === 'calendar';
@@ -1110,8 +1110,8 @@ function App() {
         }}
         style={{ originY: 0 }}
         transition={{
-          width: { type: "spring", stiffness: 400, damping: 28 },
-          height: { type: "spring", stiffness: 450, damping: 26 },
+          width: { type: "spring", stiffness: 400, damping: 31 },
+          height: { type: "spring", stiffness: 450, damping: 29 },
           y: { type: "spring", stiffness: 550, damping: 45, mass: 0.8, restDelta: 0.001 },
           opacity: { duration: 0.2 },
           borderTopLeftRadius: { type: "spring", stiffness: 1000, damping: 40 },
@@ -1129,10 +1129,10 @@ function App() {
           {isExpanded && (
             <motion.div
               key="bloom-content"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.1 }}
               style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', overflow: 'hidden', borderRadius: 'inherit' }}
             >
               {/* Faster Waiting Transition Area */}
@@ -1430,9 +1430,9 @@ function App() {
                   <motion.div
                     className="command-center-content-minimal"
                     onClick={e => e.stopPropagation()}
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98, filter: "blur(4px)", transition: { duration: 0.15 } }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   >
                     {/* Pills Grid */}
@@ -1597,9 +1597,9 @@ function App() {
                   <motion.div
                     className="calendar-timer-content split-view"
                     onClick={e => e.stopPropagation()} /* Block mode switches when clicking inside */
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98, filter: "blur(4px)", transition: { duration: 0.15 } }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   >
                     <div className="calendar-column">
