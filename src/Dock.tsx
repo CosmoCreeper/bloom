@@ -533,6 +533,10 @@ const Dock = memo(function Dock() {
                     onMouseLeave={() => { if (!isPreviewHoveredRef.current) { setHoveredApp(null); setPressedApp(null); } }}
                     onDragStart={() => { if (app.is_pinned) { setIsDragging(true); setHoveredApp(null); setPressedApp(null); } }}
                     onDragEnd={handleDragEnd}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isDragging) handleAppClick(app);
+                    }}
                   >
                 <AnimatePresence>
                   {dockPreviewEnabled && previewData && previewData.path === app.path && hoveredApp === app.path && (
@@ -569,10 +573,6 @@ const Dock = memo(function Dock() {
                   onPointerDown={() => setPressedApp(app.path)}
                   onPointerUp={() => setPressedApp(null)}
                   onPointerCancel={() => setPressedApp(null)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isDragging) handleAppClick(app);
-                  }}
                 >
                   {(() => {
                     const isHost = app.path.toLowerCase().includes("msedge.exe") || app.path.toLowerCase().includes("chrome.exe") || app.path.toLowerCase().includes("applicationframehost.exe");
