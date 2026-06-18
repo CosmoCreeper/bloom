@@ -116,7 +116,9 @@ fn main() {
             set_bluetooth_state,
             open_bluetooth_settings,
             open_airplane_mode_settings,
-            set_brightness
+            set_brightness,
+            get_battery_saver_state,
+            open_battery_saver_settings
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

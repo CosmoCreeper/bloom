@@ -1147,3 +1147,30 @@ pub fn set_brightness(brightness: u32) {
         let _ = tx.send(val);
     }
 }
+
+#[tauri::command]
+pub async fn get_battery_saver_state() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let script = r#"
+[void][Windows.System.Power.PowerManager,Windows.System.Devices,ContentType=WindowsRuntime]
+$status = [Windows.System.Power.PowerManager]::EnergySaverStatus
+Write-Host ($status -eq 'Activated').ToString()
+"#;
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NoLogo", "-ExecutionPolicy", "Bypass", "-Command", script])
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(stdout == "True")
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn open_battery_saver_settings() {
+    std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NoLogo", "-Command", "Start-Process 'ms-settings:batterysaver'"])
+        .creation_flags(0x08000000)
+        .spawn()
+        .ok();
+}

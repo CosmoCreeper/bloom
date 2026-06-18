@@ -223,6 +223,7 @@ function App() {
   const [volume, setVolume] = useState(0.5);
   const [wifiEnabled, setWifiEnabled] = useState(true);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(true);
+  const [batterySaverEnabled, setBatterySaverEnabled] = useState(false);
   const [currentBrightness, setCurrentBrightness] = useState(50);
   const [windowLabel, setWindowLabel] = useState<string>("");
   useEffect(() => {
@@ -517,7 +518,11 @@ function App() {
     if (Math.abs(delta) < 5) return; // Ignore tiny movements
 
     const modes: ('music' | 'command-center' | 'status' | 'calendar')[] = ['music', 'command-center', 'status', 'calendar'];
-    const availableModes = modes.filter(m => m !== 'music' || mediaInfo.has_media);
+    const availableModes = modes.filter(m => {
+      if (m === 'music' && !mediaInfo.has_media) return false;
+      if (m === 'calendar' && !settingsCalendarEnabled) return false;
+      return true;
+    });
 
     const currentIndex = availableModes.indexOf(bloomMode);
     if (currentIndex === -1) return;
@@ -604,6 +609,13 @@ function App() {
     return () => clearTimeout(timer);
   }, [isPlaying, bloomMode]);
 
+  // Reset bloom mode when calendar setting is disabled
+  useEffect(() => {
+    if (!settingsCalendarEnabled && bloomMode === 'calendar') {
+      setBloomMode('status');
+    }
+  }, [settingsCalendarEnabled, bloomMode]);
+
   // Update time
   useEffect(() => {
     const updateTime = () => {
@@ -677,8 +689,15 @@ function App() {
   useEffect(() => {
     invoke<boolean>("get_wifi_state").then(setWifiEnabled).catch(() => { });
     invoke<boolean>("get_bluetooth_state").then(setBluetoothEnabled).catch(() => { });
+    invoke<boolean>("get_battery_saver_state").then(setBatterySaverEnabled).catch(() => { });
     invoke<number>("get_volume").then(setVolume).catch(() => { });
     invoke<number>("get_brightness").then(setCurrentBrightness).catch(() => { });
+
+    // Poll battery saver state every 5s (since we can't listen for changes)
+    const interval = setInterval(() => {
+      invoke<boolean>("get_battery_saver_state").then(setBatterySaverEnabled).catch(() => { });
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Listen for brightness changes
@@ -901,6 +920,15 @@ function App() {
       console.error("Failed to toggle Bluetooth:", e);
     }
   }, [bluetoothEnabled]);
+
+  // Battery Saver - opens settings (no public API to toggle without admin)
+  const openBatterySaverSettings = useCallback(async () => {
+    try {
+      await invoke("open_battery_saver_settings");
+    } catch (e) {
+      console.error("Failed to open Battery Saver settings:", e);
+    }
+  }, []);
 
 
   // Brightness change
@@ -1491,6 +1519,13 @@ function App() {
                         <MoonIcon />
                       </button>
                       <button
+                        className={`cc-circular-btn ${batterySaverEnabled ? 'active' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); openBatterySaverSettings(); }}
+                        title={`Energy Saver: ${batterySaverEnabled ? 'On' : 'Off'} — Click to open Settings`}
+                      >
+                        <BatterySaverIcon />
+                      </button>
+                      <button
                         className="cc-circular-btn"
                         onClick={(e) => { e.stopPropagation(); openSystemTray(e); }}
                         title="System Tray"
@@ -1770,6 +1805,16 @@ function ReloadIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+    </svg>
+  );
+}
+
+function BatterySaverIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="16" height="10" rx="2" />
+      <path d="M22 11v2" />
+      <path d="M6 12h4l2-3v6l-2-3H6" />
     </svg>
   );
 }
