@@ -87,8 +87,6 @@ jobs:
           if [ -n "$OTHER" ]; then
             NOTES+=$(printf "\n### Other\n%s\n" "$OTHER")
           fi
-          NOTES+=$(printf "\n### Installers\n\n- \`bloom_%s_x64-setup.exe\` — NSIS installer\n- \`bloom_%s_x64_en-US.msi\` — MSI installer" "$VERSION" "$VERSION")
-
           echo "body<<EOF" >> "$GITHUB_OUTPUT"
           echo "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
