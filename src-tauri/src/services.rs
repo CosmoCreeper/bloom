@@ -1335,10 +1335,19 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
         let scale = monitor.scale_factor();
         let bloom_scale = crate::utils::get_bloom_scale(window.app_handle());
         
-        // Ensure we have a valid height (fallback to 100 if 0)
-        let mut ph = window.outer_size().map(|s| s.height as i32).unwrap_or(0);
-        if ph <= 0 { ph = ((100.0 * bloom_scale) * scale) as i32; }
-        
+        // ph = full physical window height. outer_size() can return 0 before the
+        // window has rendered. Never guess a value — bail and let the retry wrapper handle it.
+        let ph = window.outer_size().map(|s| s.height as i32).unwrap_or(0);
+        if ph <= 0 {
+            // Window not ready yet; the outer retry wrapper will call us again.
+            let w = window.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                register_dock_appbar(w);
+            });
+            return;
+        }
+
         let pr = ((56.0 * bloom_scale) * scale) as i32;
 
         
@@ -1396,6 +1405,7 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
                 let _ = SetWindowPos(hwnd, None, abd.rc.left, final_y, final_width, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
             }
             
+            // Always ensure the window is visible — show() is idempotent
             if !window.is_visible().unwrap_or(false) {
                 let _ = window.show();
             }

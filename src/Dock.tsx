@@ -63,27 +63,38 @@ const Dock = memo(function Dock() {
   const isHidden = dockMode === 'auto-hide' && isOverlapped && interactionState === 'none';
 
   useEffect(() => {
-    const checkVisibility = async () => {
+    let cleared = false;
+
+    const checkVisibility = async (): Promise<boolean> => {
       try {
         const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const win = getCurrentWebviewWindow();
-        const visible = await win.isVisible();
+        const visible = await getCurrentWebviewWindow().isVisible();
         if (visible) {
           setIsReady(true);
           setTimeout(() => setIsImpacted(true), 280);
           setTimeout(() => setIsExpanded(true), 350);
           return true;
         }
-      } catch (e) {}
+      } catch (_) {}
       return false;
     };
 
+    // Keep polling until visible (handles first-launch AND reload timing)
     const interval = setInterval(async () => {
-      if (await checkVisibility()) clearInterval(interval);
+      if (cleared) return;
+      if (await checkVisibility()) {
+        clearInterval(interval);
+        cleared = true;
+      }
     }, 100);
-    
-    checkVisibility();
-    return () => clearInterval(interval);
+
+    // Also attempt immediately
+    checkVisibility().then(ok => { if (ok) { clearInterval(interval); cleared = true; } });
+
+    // Safety cap: give up polling after 8 seconds (avoids zombie intervals)
+    const cap = setTimeout(() => { clearInterval(interval); cleared = true; }, 8000);
+
+    return () => { clearInterval(interval); clearTimeout(cap); cleared = true; };
   }, []);
 
   useEffect(() => {

@@ -177,3 +177,12 @@ pub fn get_bloom_scale(app: &tauri::AppHandle) -> f64 {
     1.0
 }
 
+/// Read any string value from settings.json. Returns None if the key is absent.
+pub fn get_setting_str(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    use tauri::Manager;
+    let path = app.path().app_config_dir().ok()?.join("settings.json");
+    let content = std::fs::read_to_string(path).ok()?;
+    let settings: std::collections::HashMap<String, serde_json::Value> =
+        serde_json::from_str(&content).ok()?;
+    settings.get(key)?.as_str().map(|s| s.to_string())
+}

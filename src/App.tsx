@@ -409,10 +409,11 @@ function App() {
           });
           localStorage.setItem("bloom-first-run", "done");
         }
+        const dockMode = getVal("bloom-dock-mode", "auto-hide") as string;
         const syncWindows = async () => {
           const dockEnabled = getVal("bloom-dock-enabled", "false") === "true";
           if (dockEnabled) {
-            await invoke("init_dock", { mode: getVal("bloom-dock-mode", "auto-hide") });
+            await invoke("init_dock", { mode: dockMode });
           }
           await invoke("change_notch_mode", { mode: nMode });
           await invoke("sync_appbar");
@@ -421,9 +422,18 @@ function App() {
         // 1. Snappy initial sync (fast as possible)
         setTimeout(syncWindows, 400);
 
-        // 2. Smooth layout corrections (only syncs position, doesn't re-toggle visibility)
+        // 2. Safety-net dock retry at 1.5s — catches cases where the dock webview
+        //    wasn't fully initialized when the 400ms call fired
+        const dockEnabled = getVal("bloom-dock-enabled", "false") === "true";
+        if (dockEnabled) {
+          setTimeout(() => invoke("init_dock", { mode: dockMode }).catch(() => {}), 1500);
+        }
+
+        // 3. Layout corrections (position only, no visibility toggle)
         setTimeout(() => invoke("sync_appbar"), 1000);
         setTimeout(() => invoke("sync_appbar"), 2500);
+        // Last-resort recovery for very slow systems
+        setTimeout(() => invoke("sync_appbar"), 5000);
       }
 
       const scaleVal = getVal("bloom-scale");

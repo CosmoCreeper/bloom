@@ -67,36 +67,60 @@ pub fn set_ignore_cursor_events(window: Window, ignore: bool) {
 #[tauri::command]
 pub async fn init_dock(app: AppHandle, mode: String) {
     if let Some(dock_win) = app.get_webview_window("dock") {
-        // 1. Set window properties
+        // 1. Always show first — idempotent, required before any positioning
+        let _ = dock_win.show();
         let _ = dock_win.set_always_on_top(true);
-        
-        // 2. Show and Register
+
+        // 2. Register as appbar (fixed) or manually position (auto-hide)
         if mode == "fixed" {
+            // register_dock_appbar calls show() internally too, and handles retries
             register_dock_appbar(dock_win.clone());
         } else {
-            // Auto-hide mode: show and position at bottom of screen.
-            // primary_monitor() can return None during Windows login autostart
-            // before the shell is fully initialized — retry if needed.
-            let _ = dock_win.show();
+            // Auto-hide mode: position at bottom of screen.
+            // Retry until primary_monitor() is available (can fail on autostart before shell).
             let dock_clone = dock_win.clone();
             tauri::async_runtime::spawn(async move {
-                for attempt in 0..15 {
-                    if let Ok(hwnd) = dock_clone.hwnd() {
-                        if let Ok(Some(monitor)) = dock_clone.primary_monitor() {
-                            let m_size = monitor.size();
-                            let m_pos = monitor.position();
-                            let scale = dock_clone.scale_factor().unwrap_or(1.0);
-                            let ph = dock_clone.outer_size().map(|s| s.height as i32).unwrap_or((600.0 * scale) as i32);
+                for attempt in 0..20 {
+                    // Wait for monitor and window dimensions to be available.
+                    // Never use a hardcoded fallback — wrong values produce off-screen placement.
+                    // Extract HWND as isize before any await (raw pointer is not Send).
+                    let hwnd_val = dock_clone.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+                    let ph = dock_clone.outer_size().map(|s| s.height as i32).unwrap_or(0);
+                    let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                        let s = m.size();
+                        let p = m.position();
+                        (tauri::PhysicalSize::new(s.width, s.height), tauri::PhysicalPosition::new(p.x, p.y))
+                    });
+
+                    if hwnd_val != 0 {
+                        if let Some((m_size, m_pos)) = monitor_info {
+                            if ph <= 10 {
+                                // outer_size() not ready yet — retry next tick
+                                if attempt < 19 {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                                }
+                                continue;
+                            }
                             let final_y = m_pos.y + m_size.height as i32 - ph;
                             unsafe {
-                                use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED};
-                                let _ = SetWindowPos(hwnd, None, m_pos.x, final_y, m_size.width as i32, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                                use windows::Win32::UI::WindowsAndMessaging::{
+                                    SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED
+                                };
+                                use windows::Win32::Foundation::HWND;
+                                let _ = SetWindowPos(
+                                    HWND(hwnd_val as *mut _), None,
+                                    m_pos.x, final_y,
+                                    m_size.width as i32, ph,
+                                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+                                );
                             }
+                            // Ensure visible after positioning
+                            let _ = dock_clone.show();
                             break;
                         }
                     }
-                    if attempt < 14 {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    if attempt < 19 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                     }
                 }
             });
@@ -116,7 +140,10 @@ pub async fn init_dock(app: AppHandle, mode: String) {
 pub async fn toggle_dock(app: AppHandle, enable: bool) {
     if let Some(dock_win) = app.get_webview_window("dock") {
         if enable {
-            init_dock(app, "fixed".to_string()).await; // Default to fixed when toggling via UI if not specified, or we could load from settings
+            // Load the saved dock mode rather than hardcoding "fixed"
+            let saved_mode = crate::utils::get_setting_str(&app, "bloom-dock-mode")
+                .unwrap_or_else(|| "auto-hide".to_string());
+            init_dock(app, saved_mode).await;
         } else {
             let _ = dock_win.hide();
             if let Ok(hwnd) = dock_win.hwnd() {
@@ -147,7 +174,10 @@ pub async fn sync_appbar(app: AppHandle) {
         }
     }
     if let Some(dock_win) = app.get_webview_window("dock") {
-        if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) && dock_win.is_visible().unwrap_or(false) {
+        // Do NOT gate on is_visible() — register_dock_appbar handles show() internally.
+        // Gating here was preventing the dock from recovering after a reload where it
+        // starts hidden and DOCK_APPBAR_REGISTERED is still true from the previous session.
+        if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
             register_dock_appbar(dock_win);
         }
     }
@@ -172,16 +202,29 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
                 let dock_clone = dock_win.clone();
                 tauri::async_runtime::spawn(async move {
                     for attempt in 0..10 {
-                        if let Ok(hwnd) = dock_clone.hwnd() {
-                            if let Ok(Some(monitor)) = dock_clone.primary_monitor() {
-                                let m_size = monitor.size();
-                                let m_pos = monitor.position();
-                                let scale = dock_clone.scale_factor().unwrap_or(1.0);
-                                let ph = dock_clone.outer_size().map(|s| s.height as i32).unwrap_or((600.0 * scale) as i32);
+                        // Never fall back to a hardcoded pixel height.
+                        // Extract HWND as isize before any await (raw pointer is not Send).
+                        let hwnd_val = dock_clone.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+                        let ph = dock_clone.outer_size().map(|s| s.height as i32).unwrap_or(0);
+                        let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                            let s = m.size();
+                            let p = m.position();
+                            (tauri::PhysicalSize::new(s.width, s.height), tauri::PhysicalPosition::new(p.x, p.y))
+                        });
+
+                        if hwnd_val != 0 {
+                            if let Some((m_size, m_pos)) = monitor_info {
+                                if ph <= 10 {
+                                    if attempt < 9 {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                                    }
+                                    continue;
+                                }
                                 let final_y = m_pos.y + m_size.height as i32 - ph;
                                 unsafe {
                                     use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED};
-                                    let _ = SetWindowPos(hwnd, None, m_pos.x, final_y, m_size.width as i32, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                                    use windows::Win32::Foundation::HWND;
+                                    let _ = SetWindowPos(HWND(hwnd_val as *mut _), None, m_pos.x, final_y, m_size.width as i32, ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
                                 }
                                 break;
                             }
