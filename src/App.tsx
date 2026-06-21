@@ -170,8 +170,9 @@ function App() {
   const [time, setTime] = useState("");
   const [isHovered, setIsHovered] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [scale, setScale] = useState(() => parseFloat(localStorage.getItem("bloom-scale") || "1.0"));
 
-  // Battery state
+
   const [batteryLevel, setBatteryLevel] = useState(100);
   const [isCharging, setIsCharging] = useState(false);
   const [showPowerPulse, setShowPowerPulse] = useState(false);
@@ -315,7 +316,7 @@ function App() {
       window.removeEventListener('resize', updateRect);
       observer.disconnect();
     };
-  }, [isExpanded, isHidden, windowLabel]);
+  }, [isExpanded, isHidden, windowLabel, scale]);
 
   useEffect(() => {
     if (!windowLabel) return;
@@ -424,6 +425,9 @@ function App() {
         setTimeout(() => invoke("sync_appbar"), 1000);
         setTimeout(() => invoke("sync_appbar"), 2500);
       }
+
+      const scaleVal = getVal("bloom-scale");
+      if (scaleVal !== null) setScale(parseFloat(scaleVal));
     }).catch(console.error);
   }, [windowLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -449,6 +453,9 @@ function App() {
       }
       if (key === "corners-enabled") {
         setSettingsCornersEnabled(value as boolean);
+      }
+      if (key === "bloom-scale") {
+        setScale(Number(value));
       }
       if (key === "low-battery-threshold") {
         setLowBatteryThreshold(value);
@@ -1047,7 +1054,7 @@ function App() {
     if (!isExpanded || !isVisible || isHidden) {
       return isImpacted ? 28.9 : 44.2;
     }
-    if (bloomMode === 'calendar') return 280;
+    if (bloomMode === 'calendar') return 310;
     if (bloomMode === 'command-center') return isHovered ? 230 : 36;
     if (bloomMode === 'status') return 36;
     if (isMusicMode && isHovered) return 120;
@@ -1081,10 +1088,11 @@ function App() {
         )}
       </AnimatePresence>
 
-      <motion.div
-        ref={bloomRef}
-        className={`bloom ${isHovered ? 'expanded' : ''} ${isImpacted ? 'is-impacted' : ''}`}
-        onMouseEnter={() => setIsNotchHovered(true)}
+      <div style={{ zoom: scale, width: '100%', display: 'flex', justifyContent: 'center' }}>
+        <motion.div
+          ref={bloomRef}
+          className={`bloom ${isHovered ? 'expanded' : ''} ${isImpacted ? 'is-impacted' : ''}`}
+          onMouseEnter={() => setIsNotchHovered(true)}
         onMouseLeave={() => setIsNotchHovered(false)}
         onWheel={handleWheel}
         initial={{ y: 250, width: 30.6, height: 44.2, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: 18, borderBottomRightRadius: 18, scaleX: 1, scaleY: 1, opacity: 0 }}
@@ -1653,6 +1661,7 @@ function App() {
         </AnimatePresence>
 
       </motion.div>
+    </div>
 
     </div>
   );

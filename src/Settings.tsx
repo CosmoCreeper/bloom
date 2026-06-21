@@ -1,6 +1,7 @@
 import { StrictMode, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { getCurrentWindow, Effect } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { Effect } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
@@ -8,7 +9,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import "./Settings.css";
 
-const appWindow = getCurrentWindow();
+const appWindow = getCurrentWebviewWindow();
 
 function SettingsApp() {
   const [autostart, setAutostart] = useState(false);
@@ -31,6 +32,14 @@ function SettingsApp() {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "uptodate" | "error" | "downloading">("idle");
   const [updateVersion, setUpdateVersion] = useState("");
   const [appVersion, setAppVersion] = useState("");
+  const [scale, setScale] = useState(() => parseFloat(localStorage.getItem("bloom-scale") || "1.0"));
+
+  useEffect(() => {
+    invoke('resize_settings_window', {
+      width: 380 * scale,
+      height: 450 * scale
+    }).catch(console.error);
+  }, [scale]);
 
   // Initialize autostart state and set background effects
   useEffect(() => {
@@ -111,6 +120,9 @@ function SettingsApp() {
 
       const preview = getVal("bloom-dock-preview-enabled");
       if (preview !== null) setDockPreviewEnabled(preview === "true");
+
+      const scaleVal = getVal("bloom-scale");
+      if (scaleVal !== null) setScale(parseFloat(scaleVal));
     }).catch(console.error);
 
     getVersion().then(setAppVersion);
@@ -130,9 +142,11 @@ function SettingsApp() {
       if (key === "media-ambience-enabled") setMediaAmbienceEnabled(value);
       if (key === "corners-enabled") setCornersEnabled(value);
       if (key === "low-battery-threshold") setLowBatteryThreshold(value);
+      if (key === "bloom-scale") setScale(Number(value));
     });
     return () => { unlisten.then(fn => fn()); };
   }, []);
+
 
 
 
@@ -298,6 +312,13 @@ function SettingsApp() {
     notifyChange("low-battery-threshold", val);
   };
 
+  const handleScaleChange = (val: number) => {
+    setScale(val);
+    saveAndLocal("bloom-scale", val.toString());
+    notifyChange("bloom-scale", val);
+  };
+
+
   const handleCityChange = async (newCity: string) => {
     setCityName(newCity);
     if (newCity.trim() === "") {
@@ -331,7 +352,7 @@ function SettingsApp() {
   };
 
   return (
-    <div className="settings-container">
+    <div className="settings-container" style={{ zoom: scale }}>
       <div className="title-bar" data-tauri-drag-region>
         <span className="title-text" data-tauri-drag-region>Settings</span>
         <button className="close-btn" onClick={handleClose} title="Close Settings">
@@ -378,6 +399,43 @@ function SettingsApp() {
               <span className="slider"></span>
             </label>
           </div>
+
+          <div className="setting-divider" />
+
+          <div className="setting-item">
+            <div className="setting-icon-bg" style={{ background: '#00d2c4' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 14h6v6" />
+                <path d="M20 10h-6V4" />
+                <path d="M14 10l7-7" />
+                <path d="M10 14l-7 7" />
+              </svg>
+            </div>
+            <div className="setting-info">
+              <span className="setting-label">UI & Font Scale</span>
+              <span className="setting-desc">Adjust desktop size (80% - 130%)</span>
+            </div>
+            <div className="scale-button-container">
+              <button 
+                onClick={() => handleScaleChange(Math.max(0.8, parseFloat((scale - 0.1).toFixed(1))))}
+                disabled={scale <= 0.8}
+                className="scale-adjust-btn"
+                title="Decrease Scale"
+              >
+                —
+              </button>
+              <span className="scale-display-value">{Math.round(scale * 100)}%</span>
+              <button 
+                onClick={() => handleScaleChange(Math.min(1.3, parseFloat((scale + 0.1).toFixed(1))))}
+                disabled={scale >= 1.3}
+                className="scale-adjust-btn"
+                title="Increase Scale"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
 
           <div className="setting-divider" />
 

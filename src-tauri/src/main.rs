@@ -79,6 +79,7 @@ fn main() {
             open_system_tray,
             set_ignore_cursor_events,
             set_window_height,
+            resize_settings_window,
             hide_volume_overlay,
             hide_brightness_overlay,
             media_play_pause,

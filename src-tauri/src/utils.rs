@@ -40,8 +40,8 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) {
         use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, ShowWindow, SW_HIDE, SW_SHOW, GetWindowRect};
         use windows::Win32::UI::Shell::{SHAppBarMessage, APPBARDATA, ABM_SETSTATE, ABM_GETSTATE};
 
-        let tray_class = windows::core::PCSTR(b"Shell_TrayWnd\0".as_ptr());
-        let secondary_tray_class = windows::core::PCSTR(b"Shell_SecondaryTrayWnd\0".as_ptr());
+        let tray_class = windows::core::PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8);
+        let secondary_tray_class = windows::core::PCSTR(c"Shell_SecondaryTrayWnd".as_ptr() as *const u8);
 
         // Save original taskbar state before modifying
         if ORIGINAL_TASKBAR_STATE.load(std::sync::atomic::Ordering::Relaxed) == -1 {
@@ -152,3 +152,28 @@ pub unsafe fn icon_to_base64(hicon: HICON) -> Option<String> {
 pub fn get_now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
 }
+
+pub fn get_bloom_scale(app: &tauri::AppHandle) -> f64 {
+    use tauri::Manager;
+    let path = match app.path().app_config_dir() {
+        Ok(p) => p.join("settings.json"),
+        Err(_) => return 1.0,
+    };
+    if let Ok(content) = std::fs::read_to_string(path) {
+        if let Ok(settings) = serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(&content) {
+            if let Some(val) = settings.get("bloom-scale") {
+                if let Some(scale_str) = val.as_str() {
+                    if let Ok(scale_f) = scale_str.parse::<f64>() {
+                        return scale_f;
+                    }
+                } else if let Some(scale_f) = val.as_f64() {
+                    return scale_f;
+                } else if let Some(scale_i) = val.as_i64() {
+                    return scale_i as f64;
+                }
+            }
+        }
+    }
+    1.0
+}
+

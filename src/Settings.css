@@ -353,3 +353,53 @@ input:checked + .slider:before {
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
+
+.scale-button-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 2px 4px;
+  user-select: none;
+}
+
+.scale-adjust-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  line-height: 1;
+}
+
+.scale-adjust-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.scale-adjust-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.scale-adjust-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.scale-display-value {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+}
+

@@ -517,7 +517,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
 
             let hide_osd = || {
                 use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, ShowWindow, SW_HIDE};
-                let class1 = windows::core::PCSTR(b"NativeHWNDHost\0".as_ptr());
+                let class1 = windows::core::PCSTR(c"NativeHWNDHost".as_ptr() as *const u8);
                 if let Ok(hwnd1) = FindWindowA(class1, windows::core::PCSTR::null()) { let _ = ShowWindow(hwnd1, SW_HIDE); }
             };
 
@@ -874,8 +874,8 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 // Enforce native taskbar hiding (periodic check)
                 if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) {
                     use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, IsWindowVisible};
-                    let tray_class = windows::core::PCSTR(b"Shell_TrayWnd\0".as_ptr());
-                    let secondary_tray_class = windows::core::PCSTR(b"Shell_SecondaryTrayWnd\0".as_ptr());
+                    let tray_class = windows::core::PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8);
+                    let secondary_tray_class = windows::core::PCSTR(c"Shell_SecondaryTrayWnd".as_ptr() as *const u8);
                     
                     let mut should_rehide = false;
                     if let Ok(tray_hwnd) = FindWindowA(tray_class, windows::core::PCSTR::null()) {
@@ -1255,8 +1255,10 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
         let scale = monitor.scale_factor();
-        let ph = window.outer_size().map(|s| s.height as i32).unwrap_or((48.0 * scale) as i32);
-        let pr = (40.0 * scale) as i32;  // But only reserve 40px of screen space
+        let bloom_scale = crate::utils::get_bloom_scale(window.app_handle());
+        let ph = ((420.0 * bloom_scale) * scale) as i32;
+        let pr = ((40.0 * bloom_scale) * scale) as i32;  // Scale the reserved top screen space
+
         
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, GetWindowRect, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
@@ -1331,12 +1333,14 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
         let scale = monitor.scale_factor();
+        let bloom_scale = crate::utils::get_bloom_scale(window.app_handle());
         
         // Ensure we have a valid height (fallback to 100 if 0)
         let mut ph = window.outer_size().map(|s| s.height as i32).unwrap_or(0);
-        if ph <= 0 { ph = (100.0 * scale) as i32; }
+        if ph <= 0 { ph = ((100.0 * bloom_scale) * scale) as i32; }
         
-        let pr = (56.0 * scale) as i32;
+        let pr = ((56.0 * bloom_scale) * scale) as i32;
+
         
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, GetWindowRect, SWP_NOZORDER, SWP_NOACTIVATE, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE as WS_EX_NA, SWP_FRAMECHANGED};
@@ -1538,7 +1542,7 @@ pub fn setup_display_change_monitor(app_handle: AppHandle) {
             use windows::Win32::UI::WindowsAndMessaging::*;
             use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
-            let class_name = windows::core::PCSTR(b"BloomDisplayMonitor\0".as_ptr());
+            let class_name = windows::core::PCSTR(c"BloomDisplayMonitor".as_ptr() as *const u8);
             let h_inst = GetModuleHandleW(None).unwrap_or_default().into();
 
             let wnd_class = WNDCLASSEXA {

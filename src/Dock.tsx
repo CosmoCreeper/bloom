@@ -38,6 +38,9 @@ const Dock = memo(function Dock() {
   const [isImpacted, setIsImpacted] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(() => parseFloat(localStorage.getItem("bloom-scale") || "1.0"));
+
+
 
   const isCurrentlyHovered = isDockHovered || isEdgeHovered;
   const [interactionState, setInteractionState] = useState<'active' | 'grace' | 'none'>('none');
@@ -108,7 +111,7 @@ const Dock = memo(function Dock() {
       window.removeEventListener('resize', updateRect);
       observer.disconnect();
     };
-  }, [pinnedApps, activeApps, isHidden, previewData]);
+  }, [pinnedApps, activeApps, isHidden, previewData, scale]);
 
   useEffect(() => {
     const init = async () => {
@@ -127,6 +130,9 @@ const Dock = memo(function Dock() {
       const preview = getVal("bloom-dock-preview-enabled", "true");
       setDockPreviewEnabled(preview === "true");
 
+      const scaleVal = getVal("bloom-scale");
+      if (scaleVal !== null) setScale(parseFloat(scaleVal));
+
       const pinned = await invoke<AppInfo[]>('load_pinned_apps');
       setPinnedApps(pinned.map(a => ({ ...a, is_pinned: true })));
       pinned.forEach(app => fetchIcon(app.path));
@@ -136,6 +142,7 @@ const Dock = memo(function Dock() {
     const unlistenSettings = listen<{ key: string, value: any }>("settings-changed", (event) => {
       if (event.payload.key === "dock-mode") setDockMode(event.payload.value);
       if (event.payload.key === "dock-preview-enabled") setDockPreviewEnabled(event.payload.value);
+      if (event.payload.key === "bloom-scale") setScale(Number(event.payload.value));
     });
 
     const unlistenOverlap = listen<boolean>("dock-overlap", (event) => {
@@ -266,12 +273,17 @@ const Dock = memo(function Dock() {
       open = true;
     } else if (showAddPopup && popupRef.current) {
       const r = popupRef.current.getBoundingClientRect();
-      rect = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+      rect = { 
+        x: Math.round(r.x), 
+        y: Math.round(r.y), 
+        width: Math.round(r.width), 
+        height: Math.round(r.height) 
+      };
       open = true;
     }
 
     invoke('set_menu_open', { open, rect }).catch(() => {});
-  }, [contextMenu, showAddPopup, pinnedApps, activeApps, activeSubmenu]);
+  }, [contextMenu, showAddPopup, pinnedApps, activeApps, activeSubmenu, scale]);
 
   const dockItems = useMemo(() => {
     const getAppId = (p: string, executable?: string) => {
@@ -442,12 +454,13 @@ const Dock = memo(function Dock() {
 
   return (
     <div className={`dock-container ${isDragging ? 'dragging' : ''}`} onClick={closeMenu}>
-      <motion.div
-        layout
-        ref={dockRef}
-        className={`dock ${(isImpacted || isExpanded) && !isHidden ? 'dock-expanded' : ''}`}
-        onMouseEnter={() => setIsDockHovered(true)}
-        onMouseLeave={() => { setIsDockHovered(false); setHoveredApp(null); setPressedApp(null); }}
+      <div style={{ zoom: scale, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+        <motion.div
+          layout
+          ref={dockRef}
+          className={`dock ${(isImpacted || isExpanded) && !isHidden ? 'dock-expanded' : ''}`}
+          onMouseEnter={() => setIsDockHovered(true)}
+          onMouseLeave={() => { setIsDockHovered(false); setHoveredApp(null); setPressedApp(null); }}
         initial={{ y: -800, opacity: 1, width: 34, height: 34, borderTopLeftRadius: 17, borderTopRightRadius: 17, borderBottomLeftRadius: 17, borderBottomRightRadius: 17, scaleX: 0.9, scaleY: 1.3 }}
         animate={{ 
           y: !isReady ? -800 : (isVisible ? (isHidden ? 100 : 0) : 150), 
@@ -594,12 +607,17 @@ const Dock = memo(function Dock() {
           )}
         </AnimatePresence>
       </motion.div>
+    </div>
 
       {contextMenu && (
         <div 
           ref={menuRef}
           className="context-menu" 
-          style={{ left: contextMenu.x, top: contextMenu.y - (contextMenu.app ? 200 : 100) }}
+          style={{ 
+            left: contextMenu.x / scale, 
+            top: (contextMenu.y / scale) - (contextMenu.app ? 200 : 100),
+            zoom: scale
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.app ? (
@@ -669,6 +687,7 @@ const Dock = memo(function Dock() {
             containerRef={popupRef}
             onClose={closePopup} 
             onAdd={(app: AppInfo) => { togglePin(app); closePopup(); }}
+            scale={scale}
           />
         )}
       </AnimatePresence>
@@ -676,10 +695,11 @@ const Dock = memo(function Dock() {
   );
 });
 
-function AddAppPopup({ onClose, onAdd, containerRef }: { 
+function AddAppPopup({ onClose, onAdd, containerRef, scale }: { 
   onClose: () => void, 
   onAdd: (app: AppInfo) => void,
-  containerRef: React.RefObject<HTMLDivElement | null>
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  scale: number
 }) {
   const [apps, setApps] = useState<AppInfo[]>([]);
   const [search, setSearch] = useState('');
@@ -755,7 +775,7 @@ function AddAppPopup({ onClose, onAdd, containerRef }: {
   }, [filtered]);
 
   return (
-    <motion.div className="popup-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div className="popup-overlay" style={{ zoom: scale }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div ref={containerRef} className="add-app-popup" layout initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} onClick={(e) => e.stopPropagation()}>
         <div className="popup-header">
           <h3>Add to Dock</h3>

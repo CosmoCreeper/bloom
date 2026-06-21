@@ -53,6 +53,13 @@ pub fn set_window_height(window: Window, height: f64) {
 }
 
 #[tauri::command]
+pub fn resize_settings_window(app: AppHandle, width: f64, height: f64) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.set_size(tauri::LogicalSize::new(width, height));
+    }
+}
+
+#[tauri::command]
 pub fn set_ignore_cursor_events(window: Window, ignore: bool) {
     let _ = window.set_ignore_cursor_events(ignore);
 }
@@ -229,8 +236,11 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
         if let Ok(Some(monitor)) = main_win.primary_monitor() {
             let m_pos = monitor.position();
             let m_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let bloom_scale = crate::utils::get_bloom_scale(&app);
+            let target_height = (420.0 * bloom_scale * scale) as u32;
             let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-            let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, 360));
+            let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
         }
         
         let current = CURRENT_NOTCH_OVERLAP.load(Ordering::Relaxed);
@@ -682,7 +692,7 @@ pub fn broadcast_setting(app: AppHandle, key: String, value: serde_json::Value) 
 pub fn hide_native_osd() {
     unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, ShowWindow, SW_HIDE};
-        let class1 = windows::core::PCSTR(b"NativeHWNDHost\0".as_ptr());
+        let class1 = windows::core::PCSTR(c"NativeHWNDHost".as_ptr() as *const u8);
         if let Ok(hwnd) = FindWindowA(class1, windows::core::PCSTR::null()) { let _ = ShowWindow(hwnd, SW_HIDE); }
     }
 }
@@ -720,7 +730,7 @@ pub fn open_wifi_settings() {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
         use windows::Win32::UI::Shell::ShellExecuteA;
-        let _ = ShellExecuteA(Some(HWND(std::ptr::null_mut())), windows::core::PCSTR(b"open\0".as_ptr()), windows::core::PCSTR(b"ms-availablenetworks:\0".as_ptr()), windows::core::PCSTR::null(), windows::core::PCSTR::null(), SW_SHOWNORMAL);
+        let _ = ShellExecuteA(Some(HWND(std::ptr::null_mut())), windows::core::PCSTR(c"open".as_ptr() as *const u8), windows::core::PCSTR(c"ms-availablenetworks:".as_ptr() as *const u8), windows::core::PCSTR::null(), windows::core::PCSTR::null(), SW_SHOWNORMAL);
     }
 }
 
@@ -730,7 +740,7 @@ pub fn open_notification_center() {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
         use windows::Win32::UI::Shell::ShellExecuteA;
-        let _ = ShellExecuteA(Some(HWND(std::ptr::null_mut())), windows::core::PCSTR(b"open\0".as_ptr()), windows::core::PCSTR(b"ms-actioncenter:\0".as_ptr()), windows::core::PCSTR::null(), windows::core::PCSTR::null(), SW_SHOWNORMAL);
+        let _ = ShellExecuteA(Some(HWND(std::ptr::null_mut())), windows::core::PCSTR(c"open".as_ptr() as *const u8), windows::core::PCSTR(c"ms-actioncenter:".as_ptr() as *const u8), windows::core::PCSTR::null(), windows::core::PCSTR::null(), SW_SHOWNORMAL);
     }
 }
 
@@ -741,7 +751,7 @@ pub fn open_system_tray() {
         use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, GetWindowLongA, SetWindowLongA, GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT, SetLayeredWindowAttributes, LWA_ALPHA, IsWindowVisible};
         use windows::core::PCSTR;
 
-        let tray_class = PCSTR(b"Shell_TrayWnd\0".as_ptr());
+        let tray_class = PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8);
         let hwnd = FindWindowA(tray_class, windows::core::PCSTR::null()).unwrap_or_default();
         if hwnd.0.is_null() { return; }
 
@@ -801,8 +811,8 @@ pub fn open_system_tray() {
 
             // 4. Start monitoring for the tray popup to close
             std::thread::spawn(move || {
-                let overflow_class = PCSTR(b"TopLevelWindowForOverflowXamlIsland\0".as_ptr());
-                let win10_overflow_class = PCSTR(b"NotifyIconOverflowWindow\0".as_ptr());
+                let overflow_class = PCSTR(c"TopLevelWindowForOverflowXamlIsland".as_ptr() as *const u8);
+                let win10_overflow_class = PCSTR(c"NotifyIconOverflowWindow".as_ptr() as *const u8);
                 
                 // Wait for it to appear
                 let mut found = false;
@@ -834,7 +844,7 @@ pub fn open_system_tray() {
                 crate::state::NATIVE_TASKBAR_HIDDEN.store(true, Ordering::Relaxed);
                 
                 // Revert transparency
-                let tray_class = PCSTR(b"Shell_TrayWnd\0".as_ptr());
+                let tray_class = PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8);
                 let hwnd = FindWindowA(tray_class, PCSTR::null()).unwrap_or_default();
                 if !hwnd.0.is_null() {
                     let exstyle = GetWindowLongA(hwnd, GWL_EXSTYLE);
@@ -900,11 +910,24 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
     let mut settings = HashMap::new();
     if let Ok(content) = std::fs::read_to_string(&path) { if let Ok(existing) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&content) { settings = existing; } }
-    settings.insert(key, value);
+    settings.insert(key.clone(), value);
     let content = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
     std::fs::write(path, content).map_err(|e| e.to_string())?;
+    
+    if key == "bloom-scale" {
+        if let Some(main_win) = app.get_webview_window("main") {
+            crate::services::register_appbar(main_win);
+        }
+        if let Some(dock_win) = app.get_webview_window("dock") {
+            let is_fixed = settings.get("bloom-dock-mode").map(|v| v.as_str() == Some("fixed")).unwrap_or(false);
+            if is_fixed {
+                crate::services::register_dock_appbar(dock_win);
+            }
+        }
+    }
     Ok(())
 }
+
 
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Result<HashMap<String, serde_json::Value>, String> {

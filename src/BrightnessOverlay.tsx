@@ -93,6 +93,16 @@ function BrightnessOverlayApp() {
   const [isVisible, setIsVisible] = useState(false);
   const [brightnessOverlayEnabled, setBrightnessOverlayEnabled] = useState(() => localStorage.getItem("bloom-brightness-overlay-enabled") !== "false");
   const timeoutRef = useRef<any>(null);
+  const [scale, setScale] = useState(() => parseFloat(localStorage.getItem("bloom-scale") || "1.0"));
+
+
+  useEffect(() => {
+    invoke("load_settings").then((settings: any) => {
+      if (settings && settings["bloom-scale"] !== undefined) {
+        setScale(parseFloat(settings["bloom-scale"]));
+      }
+    }).catch(console.error);
+  }, []);
 
   useEffect(() => {
     const preventContext = (e: MouseEvent) => e.preventDefault();
@@ -116,10 +126,13 @@ function BrightnessOverlayApp() {
       }, 2000);
     });
 
-    const settingsPromise = listen<{ key: string, value: boolean }>("settings-changed", (event) => {
+    const settingsPromise = listen<{ key: string, value: any }>("settings-changed", (event) => {
       if (event.payload.key === "brightness-overlay") {
         setBrightnessOverlayEnabled(event.payload.value);
         if (!event.payload.value) setIsVisible(false);
+      }
+      if (event.payload.key === "bloom-scale") {
+        setScale(Number(event.payload.value));
       }
     });
 
@@ -160,14 +173,16 @@ function BrightnessOverlayApp() {
 
   return (
     <div className="brightness-overlay-container">
-      <AnimatePresence>
-        {isVisible && (
-          <BrightnessNotch
-            brightness={brightness}
-            key="brightness-island"
-          />
-        )}
-      </AnimatePresence>
+      <div style={{ zoom: scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: '100%' }}>
+        <AnimatePresence>
+          {isVisible && (
+            <BrightnessNotch
+              brightness={brightness}
+              key="brightness-island"
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

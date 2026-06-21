@@ -96,6 +96,16 @@ function VolumeOverlayApp() {
   const [isVisible, setIsVisible] = useState(false);
   const [volumeOverlayEnabled, setVolumeOverlayEnabled] = useState(() => localStorage.getItem("bloom-volume-overlay-enabled") !== "false");
   const timeoutRef = useRef<any>(null);
+  const [scale, setScale] = useState(() => parseFloat(localStorage.getItem("bloom-scale") || "1.0"));
+
+
+  useEffect(() => {
+    invoke("load_settings").then((settings: any) => {
+      if (settings && settings["bloom-scale"] !== undefined) {
+        setScale(parseFloat(settings["bloom-scale"]));
+      }
+    }).catch(console.error);
+  }, []);
 
   // Listen for volume change events and settings changes
   useEffect(() => {
@@ -123,10 +133,13 @@ function VolumeOverlayApp() {
       }, 2000);
     });
 
-    const settingsPromise = listen<{ key: string, value: boolean }>("settings-changed", (event) => {
+    const settingsPromise = listen<{ key: string, value: any }>("settings-changed", (event) => {
       if (event.payload.key === "volume-overlay") {
         setVolumeOverlayEnabled(event.payload.value);
         if (!event.payload.value) setIsVisible(false);
+      }
+      if (event.payload.key === "bloom-scale") {
+        setScale(Number(event.payload.value));
       }
     });
 
@@ -169,15 +182,17 @@ function VolumeOverlayApp() {
 
   return (
     <div className="volume-overlay-container">
-      <AnimatePresence>
-        {isVisible && (
-          <VolumeNotch
-            volume={volume}
-            isMuted={isMuted}
-            key="volume-island"
-          />
-        )}
-      </AnimatePresence>
+      <div style={{ zoom: scale, height: '100%', display: 'flex', alignItems: 'center' }}>
+        <AnimatePresence>
+          {isVisible && (
+            <VolumeNotch
+              volume={volume}
+              isMuted={isMuted}
+              key="volume-island"
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
