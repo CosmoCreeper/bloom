@@ -971,10 +971,13 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                     if let Ok(region) = DOCK_RECT.try_lock() {
                                         if let Some(r) = *region {
                                             let scale = dock_win.scale_factor().unwrap_or(1.0);
-                                            let rx = win_pos.x + (r.x as f64 * scale) as i32 - (30.0 * scale) as i32;
-                                            let ry = win_pos.y + (r.y as f64 * scale) as i32 - (30.0 * scale) as i32;
-                                            let rw = (r.width as f64 * scale) as i32 + (60.0 * scale) as i32;
-                                            let rh = (r.height as f64 * scale) as i32 + (60.0 * scale) as i32;
+                                            let pad_x = (5.0 * scale) as i32;
+                                            let pad_y_top = (8.0 * scale) as i32;
+                                            let pad_y_bottom = (5.0 * scale) as i32;
+                                            let rx = win_pos.x + (r.x as f64 * scale) as i32 - pad_x;
+                                            let ry = win_pos.y + (r.y as f64 * scale) as i32 - pad_y_top;
+                                            let rw = (r.width as f64 * scale) as i32 + (pad_x * 2);
+                                            let rh = (r.height as f64 * scale) as i32 + pad_y_top + pad_y_bottom;
                                             if pt.x >= rx && pt.x <= (rx + rw) && pt.y >= ry && pt.y <= (ry + rh) {
                                                 is_click_interactive = true;
                                             }
@@ -1016,7 +1019,7 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 last_edge_hover = Some(final_dock_hover);
                             }
 
-                            let should_ignore = !is_click_interactive && !final_dock_hover && !MENU_IS_OPEN.load(Ordering::Relaxed);
+                            let should_ignore = !is_click_interactive && !MENU_IS_OPEN.load(Ordering::Relaxed);
                             if last_dock_ignore != Some(should_ignore) {
                                 let _ = dock_win.set_ignore_cursor_events(should_ignore);
                                 last_dock_ignore = Some(should_ignore);
@@ -1050,13 +1053,13 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 if let Ok(region) = NOTCH_RECT.try_lock() {
                                     if let Some(r) = *region {
                                         let scale = main_win.scale_factor().unwrap_or(1.0);
-                                        // Add horizontal padding (50px) to capture incoming drag actions
-                                        let rx = win_pos.x + (r.x as f64 * scale) as i32 - (50.0 * scale) as i32;
-                                        let rw = (r.width as f64 * scale) as i32 + (100.0 * scale) as i32;
+                                        let pad_x = (20.0 * scale) as i32;
+                                        let pad_y_bottom = (5.0 * scale) as i32;
+                                        let rx = win_pos.x + (r.x as f64 * scale) as i32 - pad_x;
+                                        let rw = (r.width as f64 * scale) as i32 + (pad_x * 2);
                                         
-                                        // Pre-interactive vertical range: from screen top down to window height + 40px padding
                                         let ry_top = win_pos.y;
-                                        let ry_bottom = win_pos.y + (r.height as f64 * scale) as i32 + (40.0 * scale) as i32;
+                                        let ry_bottom = win_pos.y + (r.height as f64 * scale) as i32 + pad_y_bottom;
                                         
                                         if pt.x >= rx && pt.x <= (rx + rw) && pt.y >= ry_top && pt.y <= ry_bottom {
                                             is_click_interactive = true;
@@ -1071,7 +1074,7 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 last_top_edge_hover = Some(final_notch_hover);
                             }
 
-                            let final_ignore = !is_click_interactive && !final_notch_hover && !MENU_IS_OPEN.load(Ordering::Relaxed);
+                            let final_ignore = !is_click_interactive && !MENU_IS_OPEN.load(Ordering::Relaxed);
                             if last_main_ignore != Some(final_ignore) {
                                 let _ = main_win.set_ignore_cursor_events(final_ignore);
                                 last_main_ignore = Some(final_ignore);
