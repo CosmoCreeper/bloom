@@ -1533,15 +1533,62 @@ fn reposition_all_windows(app_handle: &AppHandle) {
             register_appbar(main_win);
         }
     }
-    if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
-        if let Some(dock_win) = app_handle.get_webview_window("dock") {
+    if let Some(dock_win) = app_handle.get_webview_window("dock") {
+        if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
             register_dock_appbar(dock_win);
+        } else {
+            // Auto-hide mode: reposition dock at bottom of screen
+            reposition_autohide_dock(app_handle, dock_win);
         }
     }
     if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) {
         set_taskbar_visibility(false, false);
     }
     sync_overlays(app_handle);
+}
+
+fn reposition_autohide_dock(app_handle: &AppHandle, dock_win: tauri::WebviewWindow) {
+    let dock_clone = dock_win.clone();
+    let ah = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        for _attempt in 0..5 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            let hwnd_val = match dock_clone.hwnd() {
+                Ok(h) => h.0 as isize,
+                Err(_) => continue,
+            };
+            let ph = match dock_clone.outer_size() {
+                Ok(s) => s.height as i32,
+                Err(_) => continue,
+            };
+            if ph <= 10 {
+                continue;
+            }
+            let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                let s = m.size();
+                let p = m.position();
+                (s.width as i32, s.height as i32, p.x, p.y)
+            });
+            if let Some((m_w, m_h, m_x, m_y)) = monitor_info {
+                let final_y = m_y + m_h - ph;
+                unsafe {
+                    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED};
+                    use windows::Win32::Foundation::HWND;
+                    let _ = SetWindowPos(
+                        HWND(hwnd_val as *mut _), None,
+                        m_x, final_y, m_w, ph,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                }
+                let _ = dock_clone.show();
+                break;
+            }
+        }
+        if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) {
+            set_taskbar_visibility(false, false);
+        }
+        sync_overlays(&ah);
+    });
 }
 
 pub fn setup_display_change_monitor(app_handle: AppHandle) {
@@ -1638,7 +1685,9 @@ unsafe extern "system" fn display_monitor_proc(
                     if let Some(app_handle) = DISPLAY_MONITOR_HANDLE.get() {
                         let ah = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                            // Longer delay for wake from sleep to allow display to fully initialize
+                            let delay = if pw == PBT_APMRESUMESUSPEND { 500 } else { 300 };
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             reposition_all_windows(&ah);
                         });
                     }
