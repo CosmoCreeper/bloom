@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import "./VolumeOverlay.css";
 import { initTheme } from "./theme";
 
@@ -11,19 +11,46 @@ import { initTheme } from "./theme";
 function VolumeNotch({
   volume,
   isMuted,
+  onVolumeChange,
 }: {
   volume: number;
   isMuted: boolean;
+  onVolumeChange: (vol: number) => void;
 }) {
   const percentage = Math.round(volume * 100);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const handleBarInteraction = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!barRef.current) return;
+    const rect = barRef.current.getBoundingClientRect();
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const relativeY = rect.bottom - clientY;
+    const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
+    onVolumeChange(newVolume);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    handleBarInteraction(e);
+    const handleMouseMove = (moveE: MouseEvent) => {
+      if (!barRef.current) return;
+      const rect = barRef.current.getBoundingClientRect();
+      const relativeY = rect.bottom - moveE.clientY;
+      const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
+      onVolumeChange(newVolume);
+    };
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   return (
     <motion.div
       className="volume-notch-wrapper"
       style={{ transformOrigin: "left center" }}
-      // Initial state: shrunk and transparent with a blur
       initial={{ scaleX: 0, scaleY: 0.5, opacity: 0, filter: "blur(12px)", y: "-50%" }}
-      // Animate: organic "pop" out from the edge
       animate={{
         scaleX: 1,
         scaleY: 1,
@@ -31,7 +58,6 @@ function VolumeNotch({
         filter: "blur(0px)",
         y: "-50%"
       }}
-      // Exit: snap back with high stiffness
       exit={{
         scaleX: 0,
         scaleY: 0.8,
@@ -45,13 +71,12 @@ function VolumeNotch({
       }}
       transition={{
         type: "spring",
-        stiffness: 450, // Higher stiffness for faster response
-        damping: 25,    // Lower damping for a juicy, liquid spring
-        mass: 0.7       // Lighter mass for snappier movement
+        stiffness: 450,
+        damping: 25,
+        mass: 0.7
       }}
     >
       <div className="volume-notch">
-        {/* Staggered content fade-in to prevent distortion during scaling */}
         <motion.div
           className="volume-notch-content-group"
           initial={{ opacity: 0, x: -10 }}
@@ -67,8 +92,13 @@ function VolumeNotch({
             ease: "easeOut"
           }}
         >
-          {/* Volume bar track */}
-          <div className="volume-notch-bar">
+          <div
+            ref={barRef}
+            className="volume-notch-bar"
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleBarInteraction}
+            style={{ cursor: 'pointer' }}
+          >
             <motion.div
               className="volume-notch-fill"
               initial={false}
@@ -81,7 +111,6 @@ function VolumeNotch({
             />
           </div>
 
-          {/* Percentage value at bottom */}
           <div className="volume-notch-text">
             {isMuted ? "0%" : `${percentage}%`}
           </div>
@@ -118,9 +147,8 @@ function VolumeOverlayApp() {
     document.addEventListener('contextmenu', preventContext);
 
     const volPromise = listen("volume-change", (event: any) => {
-      if (!volumeOverlayEnabled) return; // Ignore if HUD is disabled
+      if (!volumeOverlayEnabled) return;
 
-      // Backup suppression
       invoke("hide_native_osd");
 
       const { volume: newVolume, is_muted } = event.payload;
@@ -129,13 +157,25 @@ function VolumeOverlayApp() {
       setIsMuted(is_muted);
       setIsVisible(true);
 
-      // Reset the inactivity timeout whenever volume changes
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-      // Window remains visible for 2 seconds after last change
       timeoutRef.current = setTimeout(() => {
         setIsVisible(false);
       }, 2000);
+    });
+
+    const edgePromise = listen<boolean>("volume-edge-hover", (event) => {
+      if (!volumeOverlayEnabled) return;
+
+      if (event.payload) {
+        setIsVisible(true);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      } else {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+          setIsVisible(false);
+        }, 1500);
+      }
     });
 
     const settingsPromise = listen<{ key: string, value: any }>("settings-changed", (event) => {
@@ -150,6 +190,7 @@ function VolumeOverlayApp() {
 
     return () => {
       volPromise.then(fn => fn());
+      edgePromise.then(fn => fn());
       settingsPromise.then(fn => fn());
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       document.removeEventListener('contextmenu', preventContext);
@@ -185,6 +226,19 @@ function VolumeOverlayApp() {
     };
   }, [isVisible]);
 
+  const lastVolumeCall = useRef(0);
+
+  const handleVolumeChange = useCallback((newVol: number) => {
+    setVolume(newVol);
+    setIsMuted(newVol === 0);
+
+    const now = Date.now();
+    if (now - lastVolumeCall.current < 50) return;
+    lastVolumeCall.current = now;
+
+    invoke("set_volume", { volume: newVol }).catch(() => {});
+  }, []);
+
   return (
     <div className="volume-overlay-container">
       <div style={{ zoom: scale, height: '100%', display: 'flex', alignItems: 'center' }}>
@@ -193,6 +247,7 @@ function VolumeOverlayApp() {
             <VolumeNotch
               volume={volume}
               isMuted={isMuted}
+              onVolumeChange={handleVolumeChange}
               key="volume-island"
             />
           )}

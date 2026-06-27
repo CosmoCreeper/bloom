@@ -932,8 +932,12 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
         let mut last_dock_ignore = None;
         let mut last_edge_hover = None;
         let mut last_top_edge_hover = None;
+        let mut last_left_edge_hover = None;
+        let mut last_right_edge_hover = None;
         let mut dock_interaction_expiry = Instant::now() - Duration::from_secs(1);
         let mut topbar_interaction_expiry = Instant::now() - Duration::from_secs(1);
+        let mut left_edge_expiry = Instant::now() - Duration::from_secs(1);
+        let mut right_edge_expiry = Instant::now() - Duration::from_secs(1);
         let mut last_monitor_update = Instant::now() - Duration::from_secs(5);
         let mut cached_monitor_pos = PhysicalPosition::<i32>::default();
         let mut cached_monitor_size = PhysicalSize::<u32>::default();
@@ -1080,6 +1084,70 @@ pub fn setup_cursor_monitor(app_handle: tauri::AppHandle) {
                                 last_main_ignore = Some(final_ignore);
                             }
                         }
+                    }
+
+                    // --- Left Edge (Volume Overlay) ---
+                    if let Some(vol_win) = app_handle.get_webview_window("volume-overlay") {
+                        let at_left_edge = pt.x <= (cached_monitor_pos.x + 8) &&
+                                            pt.y >= cached_monitor_pos.y &&
+                                            pt.y <= (cached_monitor_pos.y + cached_monitor_size.height as i32);
+
+                        if at_left_edge {
+                            left_edge_expiry = now + Duration::from_millis(500);
+                        }
+
+                        let final_left_hover = now < left_edge_expiry;
+                        if last_left_edge_hover != Some(final_left_hover) {
+                            let _ = app_handle.emit("volume-edge-hover", final_left_hover);
+                            last_left_edge_hover = Some(final_left_hover);
+                        }
+
+                        // Check if cursor is over the volume overlay window
+                        let vol_over = if let Ok(Some(m)) = vol_win.primary_monitor() {
+                            let ms = m.size();
+                            let mp = m.position();
+                            let vol_w = 200;
+                            let vol_h = 400;
+                            let vol_x = mp.x;
+                            let vol_y = mp.y + (ms.height as i32 / 2) - (vol_h / 2);
+                            pt.x >= vol_x && pt.x <= vol_x + vol_w &&
+                            pt.y >= vol_y && pt.y <= vol_y + vol_h
+                        } else { false };
+
+                        let should_ignore_vol = !vol_over && !final_left_hover;
+                        let _ = vol_win.set_ignore_cursor_events(should_ignore_vol);
+                    }
+
+                    // --- Right Edge (Brightness Overlay) ---
+                    if let Some(br_win) = app_handle.get_webview_window("brightness-overlay") {
+                        let at_right_edge = pt.x >= (cached_monitor_pos.x + cached_monitor_size.width as i32 - 8) &&
+                                             pt.y >= cached_monitor_pos.y &&
+                                             pt.y <= (cached_monitor_pos.y + cached_monitor_size.height as i32);
+
+                        if at_right_edge {
+                            right_edge_expiry = now + Duration::from_millis(500);
+                        }
+
+                        let final_right_hover = now < right_edge_expiry;
+                        if last_right_edge_hover != Some(final_right_hover) {
+                            let _ = app_handle.emit("brightness-edge-hover", final_right_hover);
+                            last_right_edge_hover = Some(final_right_hover);
+                        }
+
+                        // Check if cursor is over the brightness overlay window
+                        let br_over = if let Ok(Some(m)) = br_win.primary_monitor() {
+                            let ms = m.size();
+                            let mp = m.position();
+                            let br_w = 200;
+                            let br_h = 400;
+                            let br_x = mp.x + ms.width as i32 - br_w;
+                            let br_y = mp.y + (ms.height as i32 / 2) - (br_h / 2);
+                            pt.x >= br_x && pt.x <= br_x + br_w &&
+                            pt.y >= br_y && pt.y <= br_y + br_h
+                        } else { false };
+
+                        let should_ignore_br = !br_over && !final_right_hover;
+                        let _ = br_win.set_ignore_cursor_events(should_ignore_br);
                     }
                 }
             }

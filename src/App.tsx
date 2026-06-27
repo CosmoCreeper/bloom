@@ -930,13 +930,16 @@ function App() {
     }
   }, []);
 
-  const handleVolumeChange = useCallback(async (newVol: number) => {
+  const lastVolumeCallRef = useRef(0);
+
+  const handleVolumeChange = useCallback((newVol: number) => {
     setVolume(newVol);
-    try {
-      await invoke("set_volume", { volume: newVol });
-    } catch (e) {
-      console.error("Failed to set volume:", e);
-    }
+
+    const now = Date.now();
+    if (now - lastVolumeCallRef.current < 50) return;
+    lastVolumeCallRef.current = now;
+
+    invoke("set_volume", { volume: newVol }).catch(() => {});
   }, []);
 
 
@@ -983,14 +986,17 @@ function App() {
   }, []);
 
 
-  // Brightness change
-  const handleBrightnessChange = useCallback(async (newVal: number) => {
+  // Brightness change with throttling
+  const lastBrightnessCallRef = useRef(0);
+
+  const handleBrightnessChange = useCallback((newVal: number) => {
     setCurrentBrightness(newVal);
-    try {
-      await invoke("set_brightness", { brightness: newVal });
-    } catch (e) {
-      console.error("Failed to set brightness:", e);
-    }
+
+    const now = Date.now();
+    if (now - lastBrightnessCallRef.current < 50) return;
+    lastBrightnessCallRef.current = now;
+
+    invoke("set_brightness", { brightness: newVal }).catch(() => {});
   }, []);
 
   // Open system tray (unhide taskbar and invoke Win+B)
